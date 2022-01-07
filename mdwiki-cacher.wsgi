@@ -27,6 +27,8 @@ def application(environ, start_response):
     req_method = environ['REQUEST_METHOD']
     # req_uri = environ['REQUEST_URI'].split('?')[0] # remove any cache buster
     req_uri = environ['REQUEST_URI']
+
+    print(req_uri)
     if req_method == 'GET':
         log_request(req_uri, environ)
         if req_uri == '/status':
@@ -40,6 +42,7 @@ def application(environ, start_response):
             #response_headers = [('Content-type', 'text/plain')]
             #status = '200 OK'
             #print(response_body)
+        #print(status, response_headers)
         start_response(status, response_headers)
         # convert string response back to bytes
         # return [response_body.encode()]
@@ -131,6 +134,7 @@ def get_redir_path(path): # top level
     base_query = path.split('&titles=')[0] + '&titles='
     more_rd_query = '/w/api.php?action=query&format=json&prop=redirects&rdlimit=max&rdnamespace=0&redirects=true&titles='
     enwp_session = CachedSession(enwp_db, backend='sqlite')
+    mdwiki_session = CachedSession(mdwiki_db, backend='sqlite')
     pages_resp = {}
     title_page_ids = {}
     for title in titles:
@@ -250,8 +254,9 @@ def breakout_resp(resp):
 
 def calc_resp_headers(resp):
     headers = [('Content-type', resp.headers['content-type'])]
-    if 'content-length' in resp.headers:
-        headers.append(('content-length', resp.headers['content-length']))
+    # the received content length is 1 less than true length
+    #if 'content-length' in resp.headers:
+    #    headers.append(('content-length', resp.headers['content-length']))
     return headers
 
 def get_mdwiki_redirects(rd_to_title):
@@ -297,6 +302,17 @@ def get_mdwiki_redirect_lists():
     mdwiki_redirect_list = mdwiki_redirects['list']
     mdwiki_rd_lookup = mdwiki_redirects['lookup']
 
+# taken from sp_lib
+def read_json_file(file_path):
+    try:
+        with open(file_path, 'r') as json_file:
+            readstr = json_file.read()
+            json_dict = json.loads(readstr)
+        return json_dict
+    except OSError as e:
+        print('Unable to read url json file', e)
+        raise
+
 def log_request(req_uri, environ):
     print(f"GET request, Path: {str(req_uri)}")
     # \nHeaders:\n{str(environ)}\n")
@@ -309,5 +325,5 @@ def init():
     get_enwp_page_list()
     print('Mdwiki cache ready\n')
 
-if __name__ == '__main__':
-    init()
+# initialize lists
+init()
