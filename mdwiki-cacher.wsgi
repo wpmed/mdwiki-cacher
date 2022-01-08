@@ -7,7 +7,7 @@ import base64
 # import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-# import  basicspider.sp_lib as sp
+from common import * # functions common to several modules
 
 mdwiki_list = []
 mdwiki_redirect_list = []
@@ -20,6 +20,9 @@ enwp_domain = 'https://en.wikipedia.org'
 enwp_db ='http_cache'
 mdwiki_db  = 'mdwiki'
 
+nonwiki_url = '/nonwiki/'
+article_list = 'data/mdwikimed.tsv'
+
 #enwp_session = CachedSession(enwp_db, backend='sqlite')
 #mdwiki_session = CachedSession(mdwiki_db, backend='sqlite')
 
@@ -31,18 +34,10 @@ def application(environ, start_response):
     print(req_uri)
     if req_method == 'GET':
         log_request(req_uri, environ)
-        if req_uri == '/status':
-            # return env as test
-            response_headers = [('Content-type', 'text/plain')]
-            status = '200 OK'
-            response_body = dump(environ)
-
+        if req_uri.startswith(nonwiki_url):
+            status, response_headers, response_body = do_nonwiki(req_uri, environ)
         else:
             status, response_headers, response_body = do_GET(req_uri)
-            #response_headers = [('Content-type', 'text/plain')]
-            #status = '200 OK'
-            #print(response_body)
-        #print(status, response_headers)
         start_response(status, response_headers)
         # convert string response back to bytes
         # return [response_body.encode()]
@@ -72,8 +67,10 @@ def do_GET(path):
         if '&prop=redirects' in path:
             return get_redir_path(path)
         else:
-            # this is not expected
-            print("Skipping Unknown Path: " + str(path))
+            # this is not expected for zims
+            # but can happen when mirroring site
+            # print("Skipping Unknown Path: " + str(path))
+            return get_mdwiki_url(path)
     elif '&page=' in path:
         # page = path.split('&page=')[1]
         args = parse_qs(urlparse(path).query)
@@ -264,6 +261,22 @@ def get_mdwiki_redirects(rd_to_title):
     rd_list = mdwiki_rd_lookup.get(rd_to_title, []) # list of rd_from_titles for rd_to_titles
     return rd_list
 
+def do_nonwiki(path, environ):
+    # all special non-wiki requests come here
+    status = '200 OK'
+    response_headers = [('Content-type', 'text/plain')]
+    if path == nonwiki_url + 'status':
+        # return env as test
+        response_body = dump(environ)
+    elif path == nonwiki_url + 'lists/mdwikimed.tsv':
+        with open(article_list, 'rb') as f:
+            response_body = f.read()
+
+    else:
+        response_body = b'???'
+    return status, response_headers, response_body
+
+
 def get_enwp_page_list():
     global enwp_list
     #mdwiki_redirects = read_json_file('data/mdwiki_redirects.json')
@@ -301,17 +314,6 @@ def get_mdwiki_redirect_lists():
     mdwiki_redirects = read_json_file('data/mdwiki_redirects.json')
     mdwiki_redirect_list = mdwiki_redirects['list']
     mdwiki_rd_lookup = mdwiki_redirects['lookup']
-
-# taken from sp_lib
-def read_json_file(file_path):
-    try:
-        with open(file_path, 'r') as json_file:
-            readstr = json_file.read()
-            json_dict = json.loads(readstr)
-        return json_dict
-    except OSError as e:
-        print('Unable to read url json file', e)
-        raise
 
 def log_request(req_uri, environ):
     print(f"GET request, Path: {str(req_uri)}")
