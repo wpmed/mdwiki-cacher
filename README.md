@@ -2,8 +2,8 @@
 
 ## Installs
 
-apt install python3-pip
-pip3 install requests-cache
+- apt install python3-pip
+- pip3 install requests-cache
 
 ## Executables
 
