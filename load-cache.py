@@ -7,6 +7,7 @@ import datetime
 import time
 import requests
 import json
+import argparse
 import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
@@ -16,12 +17,12 @@ from common import *
 MDWIKI_CACHER_DIR = '/srv2/mdwiki-cacher/'
 os.chdir(MDWIKI_CACHER_DIR)
 
-HOME_PAGE = 'WikiProjectMed:App/IntroPage'
+# HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
 RETRY_LOOP = 10
 mdwiki_list = []
 mdwiki_domain = 'https://mdwiki.org'
-mdwiki_db  = 'mdwiki'
+mdwiki_db  = 'mdwiki_api'
 mdwiki_cache  = SQLiteCache(db_path=mdwiki_db)
 mdwiki_session  = CachedSession(mdwiki_db, backend='sqlite')
 mdwiki_uncached_session  = CachedSession(mdwiki_db, backend='sqlite', expire_after=0)
@@ -41,6 +42,7 @@ videdit_page = 'https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=ht
 # session = CachedSession(cache_control=True)
 # https://requests-cache.readthedocs.io/en/stable/user_guide/headers.html
 status503_list = []
+failed_url_list = []
 
 def main():
     global mdwiki_cached_urls
@@ -49,12 +51,19 @@ def main():
 
     set_logger()
 
+    args = parse_args()
+    # args.device is either value or None
+    if args.interactive: # allow override of path
+        sys.exit()
+
     last_day_of_prev_month = datetime.date.today().replace(day=1) - datetime.timedelta(days=1)
     start_day_of_prev_month = datetime.date.today().replace(day=1) - datetime.timedelta(days=last_day_of_prev_month.day)
     refresh_cache_since = start_day_of_prev_month.strftime('%Y-%m-%dT%H:%M:%SZ')
 
+    # refresh_cache_since = '2021-12-11T00:00:00Z'
     # refresh_cache_since = '2022-01-09T00:00:00Z'
-    refresh_cache_since = '2021-12-11T00:00:00Z'
+    # refresh_cache_since = '2022-02-17T00:00:00Z'
+    refresh_cache_since = '2022-03-03T00:00:00Z'
 
     logging.info('Refreshing cached pages with changes since: %s\n', str(refresh_cache_since))
 
@@ -64,12 +73,23 @@ def main():
     with open('cache-refresh-hist.txt', 'a') as f:
         f.write(datetime.date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
 
+    write_list(failed_url_list, 'failed_urls.txt')
+
 def refresh_cache(since):
     get_mdwiki_changed_page_list(since)
     for page in mdwiki_changed_list:
         refresh_cache_page(page)
 
-def refresh_cache_page(page):
+def rebuild_cache():
+    # see load_cache()
+    set_logger()
+    get_mdwiki_page_list()
+    logging.info('Starting to create cache')
+    for page in mdwiki_list:
+        refresh_cache_page(page)
+
+    # refresh_cache_page
+
     # verify space or underscore
     # get_mdwiki_changed_page_list converts
     # find_in_cache('Heart_failure')
@@ -81,12 +101,14 @@ def refresh_cache_page(page):
 
     # logging.info('Refreshing cache for page: %s\n', str(page))
 
+def refresh_cache_page(page):
     url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
     refresh_cache_url(url)
     url2 = videdit_page + page
     refresh_cache_url(url2)
 
 def refresh_cache_url(url):
+    global failed_url_list
     r = mdwiki_uncached_session.get(url)
     if r.status_code == 503 or r.content.startswith(b'{"error":'):
         r = retry_url(url)
@@ -94,6 +116,7 @@ def refresh_cache_url(url):
         mdwiki_cache.save_response(r)
     else:
         logging.info('Failed to get URL: %s\n', str(url))
+        failed_url_list.append(url)
 
 def retry_url(url):
     logging.info("Error or 503 in URL: %s\n", str(url))
@@ -263,28 +286,17 @@ def write_list(data, file):
 
 def get_mdwiki_page_list():
     global mdwiki_list
-    mdwiki_list = []
-    mdwiki_list.append(HOME_PAGE)
+    print('Getting mdwiki pages')
+    with open('data/mdwiki.tsv') as f:
+        txt = f.read()
+    # last item can be ''
+    mdwiki_list = txt.split('\n')[:-1]
 
-    # q = 'https://mdwiki.org/w/api.php?action=query&apnamespace=' + namesp + '&format=json&list=allpages&aplimit=max&apcontinue='
-    q = 'https://mdwiki.org/w/api.php?action=query&apnamespace=0&format=json'
-    q += '&list=allpages&apfilterredir=nonredirects&aplimit=max&apcontinue='
-    apcontinue = ''
-    loop_count = -1
-    while(loop_count):
-        try:
-            r = requests.get(q + apcontinue).json()
-        except Exception as error:
-            logging.error(error)
-            logging.error('Request failed. Exiting.')
-            sys.exit(1)
-        pages = r['query']['allpages']
-        apcontinue = r.get('continue',{}).get('apcontinue')
-        for page in pages:
-            mdwiki_list.append(page['title'].replace(' ', '_'))
-        if not apcontinue:
-            break
-        loop_count -= 1
+def parse_args():
+    parser = argparse.ArgumentParser(description="Create or refresh cache for mdwiki-cacher.")
+    parser.add_argument("-i", "--interactive", help="exit so can be run interactively", action="store_true")
+    parser.add_argument("-a", "--all", help="Print messages.", action="store_true")
+    return parser.parse_args()
 
 if __name__ == '__main__':
     try:

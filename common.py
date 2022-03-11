@@ -25,3 +25,11 @@ def write_list(data, file):
     with open(file, 'w') as f:
         for d in data:
             f.write(d + '\n')
+
+def read_file(file_path, mode='rt'):
+    try:
+        with open(file_path, mode) as f:
+            return f.read()
+    except OSError as e:
+        print('Unable to read file', e)
+        raise
