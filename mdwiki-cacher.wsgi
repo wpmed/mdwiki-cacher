@@ -17,11 +17,31 @@ mdwiki_domain = 'https://mdwiki.org'
 enwp_list = []
 enwp_domain = 'https://en.wikipedia.org'
 
-enwp_db ='http_cache'
-mdwiki_db  = 'mdwiki'
+mdwiki_api_db  = 'mdwiki_api'
+mdwiki_wiki_db  = 'mdwiki_wiki'
+mdwiki_other_db  = 'mdwiki_other'
+
+enwp_db ='enwp'
 
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
+
+# /robots.txt handled by nginx
+
+# these are probing queris at the start of a run
+mdwiki_urls = ['/',
+                '/wiki/',
+                '/wiki/App%2FIntroPage',
+                '/api/rest_v1/page/mobile-sections/Main_Page',
+                '/api/rest_v1/page/html/Main_Page',
+                '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page=Main_Page',
+                '/w/api.php?',
+                '/w/api.php?action=query&format=json&prop=redirects%7Crevisions%7Ccoordinates&rdlimit=max&rdnamespace=',
+                '/w/api.php?action=query&meta=siteinfo&siprop=namespaces%7Cnamespacealiases&format=json',
+                '/wiki/?title=Mediawiki%3Aoffline.css&action=raw',
+                '/logo.png',
+                '/logo.svg',
+                '/favicon.ico']
 
 #enwp_session = CachedSession(enwp_db, backend='sqlite')
 #mdwiki_session = CachedSession(mdwiki_db, backend='sqlite')
@@ -34,8 +54,12 @@ def application(environ, start_response):
     print(req_uri)
     if req_method == 'GET':
         log_request(req_uri, environ)
-        if req_uri.startswith(nonwiki_url):
+        if req_uri in mdwiki_urls: # some hardcoded urls that must go to mdwiki
+            status, response_headers, response_body = get_mdwiki_other_url(req_uri)
+
+        elif req_uri.startswith(nonwiki_url):
             status, response_headers, response_body = do_nonwiki(req_uri, environ)
+
         else:
             status, response_headers, response_body = do_GET(req_uri)
         start_response(status, response_headers)
@@ -63,29 +87,50 @@ def do_GET(path):
 
     # TO DO: INTEGRATE THE OTHER APIS
 
-    if '&titles=' in path: # is a redirect or a page request
-        if '&prop=redirects' in path:
-            return get_redir_path(path)
+    if path.startswith('/w/api.php?'):
+        if '&titles=' in path: # is a redirect or a page request
+            if '&prop=redirects' in path:
+                return get_redir_path(path)
+            else:
+                # this is not expected for zims
+                # but can happen when mirroring site
+                # print("Skipping Unknown Path: " + str(path))
+                return get_mdwiki_other_url(path)
+        elif '&page=' in path:
+            # page = path.split('&page=')[1]
+            args = parse_qs(urlparse(path).query)
+            page = args['page'][0].replace(' ', '_')
+            if page in mdwiki_list:
+                return get_mdwiki_api_url(path)
+            elif page in enwp_list:
+                return get_enwp_url(path)
+                # return get_enwp_url_direct(path) # changed 3/5/2022
+            else:
+                print("Skipping Unknown Page: " + str(path))
+                return respond_404()
         else:
-            # this is not expected for zims
-            # but can happen when mirroring site
-            # print("Skipping Unknown Path: " + str(path))
-            return get_mdwiki_url(path)
-    elif '&page=' in path:
-        # page = path.split('&page=')[1]
-        args = parse_qs(urlparse(path).query)
-        page = args['page'][0].replace(' ', '_')
-        if page in mdwiki_list:
-            return get_mdwiki_url(path)
-            #get_mdwiki_url(path)
-        elif page in enwp_list:
-            return get_enwp_url(path)
+            return get_mdwiki_other_url(path) # use mdwiki for anything else
+
+    elif path.startswith('/wiki/'):
+        if path.startswith('/wiki/File:'):
+            return get_mdwiki_other_url(path) # will route all media through mdwiki, but no choice
         else:
-            print("Skipping Unknown Page: " + str(path))
-            return respond_404()
+            # see if path is mdwiki or en wp and set domain
+            article = path.split('/wiki/')[-1]
+            if article in mdwiki_list:
+                return get_mdwiki_wiki_url(path)
+            elif article in enwp_list:
+                return get_enwp_url(path)
+                return get_enwp_url_direct(path) # changed 3/5/2022
+            else:
+                return respond_404()
+    elif path.startswith('/w/'):
+        return get_mdwiki_other_url(path)
+    elif path.startswith('/media/'):
+        return get_mdwiki_other_url(path)
     else:
-        return get_mdwiki_url(path) # use mdwiki for anything else
-        #get_mdwiki_url(path) # use mdwiki for anything else
+        print("Skipping Unknown Page: " + str(path))
+        return respond_404()
 
 def do_POST():
     pass
@@ -94,19 +139,61 @@ def dump(environ):
     print("Dump Environment")
     response_body = ['%s: %s' % (key, value) for key, value in sorted(environ.items())]
     response_body = '\n'.join(response_body)
-    return response_body.encode()
+    return response_body
 
-def get_mdwiki_url( path):
+def get_mdwiki_api_url(path):
     # ADD RETRY
     url = mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_db, backend='sqlite')
+    mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
     resp = mdwiki_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
         resp = retry_url(url)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
+
+def get_mdwiki_wiki_url(path):
+    # ADD RETRY
+    url = mdwiki_domain + path
+    #logging.info("Downloading from URL: %s\n", str(url))
+    mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite')
+    resp = mdwiki_session.get(url)
+    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+        resp = retry_url(url)
+    # start_response(resp)
+    # REWRITE  wfile.write(resp.content)
+    return breakout_resp(resp)
+
+def get_mdwiki_other_url(path):
+    # ADD RETRY
+    url = mdwiki_domain + path
+    #logging.info("Downloading from URL: %s\n", str(url))
+    mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite')
+    resp = mdwiki_session.get(url)
+    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+        resp = retry_url(url)
+    # start_response(resp)
+    # REWRITE  wfile.write(resp.content)
+    return breakout_resp(resp)
+
+def get_enwp_url_direct(path):
+    # ADD RETRY
+    url = enwp_domain + path
+    headers = get_request_headers()
+    resp = requests.get(url, headers)
+    #if 'Portal' in resp.text:
+    #print(resp.text)
+
+    # REWRITE  wfile.write(resp.content)
+    return breakout_resp(resp)
+
+def get_request_headers():
+    headers = {}
+    headers['User-Agent'] = 'MWOffliner/HEAD (info@iiab.me)'
+    headers['Cookie'] = ''
+    headers['Connection'] = 'close'
+    return headers
 
 def get_enwp_url(path):
     # ADD RETRY
@@ -131,7 +218,7 @@ def get_redir_path(path): # top level
     base_query = path.split('&titles=')[0] + '&titles='
     more_rd_query = '/w/api.php?action=query&format=json&prop=redirects&rdlimit=max&rdnamespace=0&redirects=true&titles='
     enwp_session = CachedSession(enwp_db, backend='sqlite')
-    mdwiki_session = CachedSession(mdwiki_db, backend='sqlite')
+    mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
     pages_resp = {}
     title_page_ids = {}
     for title in titles:
@@ -267,11 +354,14 @@ def do_nonwiki(path, environ):
     response_headers = [('Content-type', 'text/plain')]
     if path == nonwiki_url + 'status':
         # return env as test
-        response_body = dump(environ)
+        refresh_hist = 'Refresh History:\n'
+        refresh_hist += read_file('cache-refresh-hist.txt')
+        env = 'Environment:\n' + dump(environ)
+        response_body = refresh_hist + env
+        response_body = response_body.encode()
     elif path == nonwiki_url + 'lists/mdwikimed.tsv':
         with open(article_list, 'rb') as f:
             response_body = f.read()
-
     else:
         response_body = b'???'
     return status, response_headers, response_body
@@ -295,7 +385,8 @@ def get_mdwiki_page_list():
     try:
         with open('data/mdwiki.tsv') as f:
             txt = f.read()
-        mdwiki_list = txt.split('\n')
+        mdwiki_list = txt.split('\n')[:-1]
+        # last item can be ''
     except Exception as error:
         print(error)
         print('Failed to read mdwiki.tsv. Exiting.')
@@ -316,8 +407,8 @@ def get_mdwiki_redirect_lists():
     mdwiki_rd_lookup = mdwiki_redirects['lookup']
 
 def log_request(req_uri, environ):
-    print(f"GET request, Path: {str(req_uri)}")
-    # \nHeaders:\n{str(environ)}\n")
+    print(f"GET request, Path: {str(req_uri)} \n")
+    # print(f"GET request, Path: {str(req_uri)} \nHeaders:\n{str(environ)}\n")
 
 def init():
     print('Starting httpd...\n')
