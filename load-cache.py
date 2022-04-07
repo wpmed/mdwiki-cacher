@@ -1,9 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # su - www-data -s /bin/bash -c '/srv2/mdwiki-cacher/load-cache.py' for testing
 import os
+MDWIKI_CACHER_DIR = '/srv2/mdwiki-cacher/'
+os.chdir(MDWIKI_CACHER_DIR)
 import logging
 import sys
-import datetime
+from datetime import timedelta, date
 import time
 import requests
 import json
@@ -13,9 +15,6 @@ from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
 from requests_cache.backends.sqlite import SQLiteCache
 from common import *
-
-MDWIKI_CACHER_DIR = '/srv2/mdwiki-cacher/'
-os.chdir(MDWIKI_CACHER_DIR)
 
 # HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
@@ -35,6 +34,7 @@ request_paths =  []
 mdwiki_cached_urls = []
 mdwiki_uncached_urls = []
 mdwiki_uncached_pages = []
+CACHE_HIST_FILE = 'cache-refresh-hist.txt'
 
 parse_page = 'https://mdwiki.org/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
 videdit_page = 'https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
@@ -56,8 +56,8 @@ def main():
     if args.interactive: # allow override of path
         sys.exit()
 
-    last_day_of_prev_month = datetime.date.today().replace(day=1) - datetime.timedelta(days=1)
-    start_day_of_prev_month = datetime.date.today().replace(day=1) - datetime.timedelta(days=last_day_of_prev_month.day)
+    last_day_of_prev_month = date.today().replace(day=1) - timedelta(days=1)
+    start_day_of_prev_month = date.today().replace(day=1) - timedelta(days=last_day_of_prev_month.day)
     refresh_cache_since = start_day_of_prev_month.strftime('%Y-%m-%dT%H:%M:%SZ')
 
     # refresh_cache_since = '2021-12-11T00:00:00Z'
@@ -65,22 +65,34 @@ def main():
     # refresh_cache_since = '2022-02-17T00:00:00Z'
     refresh_cache_since = '2022-03-03T00:00:00Z'
 
+    refresh_cache_since = get_last_run()
+
     logging.info('Refreshing cached pages with changes since: %s\n', str(refresh_cache_since))
 
     refresh_cache(refresh_cache_since)
     logging.info('Cache refreshed\n')
 
-    with open('cache-refresh-hist.txt', 'a') as f:
-        f.write(datetime.date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
+    with open(CACHE_HIST_FILE, 'a') as f:
+        f.write(date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
 
     write_list(failed_url_list, 'failed_urls.txt')
+
+def get_last_run():
+    # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
+    last_success_date = None
+    try:
+        log_list = read_file_list(CACHE_HIST_FILE)
+        last_success_date = log_list[-1]
+    except:
+        print('Log file does not exist or not readable.')
+    return last_success_date
 
 def refresh_cache(since):
     get_mdwiki_changed_page_list(since)
     for page in mdwiki_changed_list:
         refresh_cache_page(page)
 
-def rebuild_cache():
+def rebuild_cache(): # run interactively
     # see load_cache()
     set_logger()
     get_mdwiki_page_list()
@@ -109,8 +121,13 @@ def refresh_cache_page(page):
 
 def refresh_cache_url(url):
     global failed_url_list
-    r = mdwiki_uncached_session.get(url)
-    if r.status_code == 503 or r.content.startswith(b'{"error":'):
+    get_except = False
+    try:
+        r = mdwiki_uncached_session.get(url)
+    except:
+        get_except = True
+
+    if get_except or r.status_code == 503 or r.content.startswith(b'{"error":'):
         r = retry_url(url)
     if r:
         mdwiki_cache.save_response(r)
@@ -122,8 +139,12 @@ def retry_url(url):
     logging.info("Error or 503 in URL: %s\n", str(url))
     sleep_secs = 20
     for i in range(10):
-        resp = requests.get(url)
-        if resp.status_code != 503 and not resp.content.startswith(b'{"error":'):
+        get_except = False
+        try:
+            resp = requests.get(url) # did not use mdwiki_uncached_session to avoid conflict on retry
+        except:
+            get_except = True
+        if not get_except and resp.status_code != 503 and not resp.content.startswith(b'{"error":'):
             return resp
         logging.info('Retrying URL: %s\n', str(url))
         time.sleep(i * sleep_secs)
@@ -179,110 +200,9 @@ def set_logger():
     logger.addHandler(file_handler)
     logger.addHandler(stdout_handler)
 
-########################################
-# Below here are utilities for testing #
-########################################
-
-def load_cache():
-    global mdwiki_cached_urls
-    global mdwiki_uncached_urls
-    global mdwiki_uncached_pages
-    count = -1
-    print('Getting mdwiki pages')
-    get_mdwiki_page_list()
-
-    print('Getting list of cached urls')
-    mdwiki_cached_urls = list(mdwiki_session.cache.urls) # all urls in cache
-    print('Searching for uncached urls')
-    for page in mdwiki_list:
-        url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27')
-        url2 = videdit_page + page
-        missing = False
-        if url not in mdwiki_cached_urls:
-            mdwiki_uncached_urls.append(url)
-            missing = True
-        if url2 not in mdwiki_cached_urls:
-            mdwiki_uncached_urls.append(url2)
-            missing = True
-        if missing:
-            print(page)
-            mdwiki_uncached_pages.append(page)
-
-def add_to_cache():
-    global status503_list
-    sleep_secs = 20
-    status503_list = []
-    for url in mdwiki_uncached_urls:
-        print('Getting ' + url)
-        for i in range(10):
-            resp = mdwiki_session.get(url)
-            if resp.status_code == 503:
-                status503_list.append(url)
-                print('# %i Retrying URL: %s\n', i, str(url))
-                time.sleep(i * sleep_secs)
-            else:
-                if resp.status_code != 200:
-                    print(url)
-                break
-
-def copy_cache(): # was run from mdwiki-cache/cache-tests
-    src_db ='../http_cache.sqlite'
-    src_db ='has_errors.sqlite'
-    dest_db  = 'mdwiki'
-
-    src = SQLiteCache(db_path=src_db)
-    dest  = SQLiteCache(db_path=dest_db)
-
-    for key in list(src.keys()):
-        r = src.get_response(key)
-        if not r.url.startswith('https://mdwiki.org'):
-            continue
-        if r.status_code != 200:
-            dest.save_response(r)
-        else:
-            if not r.content.startswith(b'{"error":'):
-                # save in dest
-                dest.save_response(r)
-            else:
-                # get without a 503 error
-                sleep_secs = 20
-                url = r.url
-                print("Downloading from URL: %s\n", str(url))
-                for i in range(10):
-                    resp = requests.get(url)
-                    if not resp.content.startswith(b'{"error":'):
-                        dest.save_response(resp)
-                        break
-                    else:
-                        print('# %i Retrying URL: %s\n', i, str(url))
-                        time.sleep(i * sleep_secs)
-
-def find_to_encode():
-    for u in mdwiki_cached_urls:
-        if '?action=parse' in u and '&page=' in u:
-            page = u.split('&page=')[1]
-            if ':' in page or "'" in page or '/' in page or '_' in page:
-                print(page)
-
-def find_in_cache(match):
-    for u in mdwiki_cached_urls:
-        if match in u:
-            print(u)
-
-def write_list(data, file):
-    with open(file, 'w') as f:
-        for d in data:
-            f.write(d + '\n')
-
-# https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges&rctoponly&rcstart=now&rcend=2021-11-01T00:00:00Z
-
-# rcnamespace=0|4
-# https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges&rclimit=max&rcnamespace=0|4&rctoponly&rcstart=now&rcend=2021-11-01T00:00:00Z
-# changed_pages = 'https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges' # &rcend=2021-11-01T00:00:00Z &rctoponly
-
-# "query":{"recentchanges":[{"type":"edit","ns":0,title":"Metastatic liver disease","pageid":61266,"revid":1274552,"old_revid":1274551,
-# "rcid":144650,"timestamp":"2021-12-10T11:32:54Z"}, ... ]
-
+###################################################
+# additional functions moved to load-cache=utils.py
+###################################################
 
 def get_mdwiki_page_list():
     global mdwiki_list
