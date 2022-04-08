@@ -3,7 +3,7 @@
 import os
 MDWIKI_CACHER_DIR = '/srv2/mdwiki-cacher/'
 os.chdir(MDWIKI_CACHER_DIR)
-import logging
+import logging, logging.handlers
 import sys
 from datetime import timedelta, date
 import time
@@ -193,7 +193,7 @@ def set_logger():
     stdout_handler.setLevel(logging.INFO)
     stdout_handler.setFormatter(formatter)
 
-    file_handler = logging.FileHandler('mdwiki-refresh-cache.log')
+    file_handler = logging.handlers.RotatingFileHandler('mdwiki-refresh-cache.log', maxBytes=10000, backupCount=5)
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 
