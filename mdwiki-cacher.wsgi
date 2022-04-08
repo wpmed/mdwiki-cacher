@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import time
+from datetime import timedelta
 import requests
 import json
 import base64
@@ -18,10 +19,12 @@ enwp_list = []
 enwp_domain = 'https://en.wikipedia.org'
 
 mdwiki_api_db  = 'mdwiki_api'
+# these have 7 day expiry
 mdwiki_wiki_db  = 'mdwiki_wiki'
 mdwiki_other_db  = 'mdwiki_other'
-
 enwp_db ='enwp'
+
+expiry_days = timedelta(days=7)
 
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
@@ -157,7 +160,7 @@ def get_mdwiki_wiki_url(path):
     # ADD RETRY
     url = mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite')
+    mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
     resp = mdwiki_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
         resp = retry_url(url)
@@ -169,7 +172,7 @@ def get_mdwiki_other_url(path):
     # ADD RETRY
     url = mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite')
+    mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
     resp = mdwiki_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
         resp = retry_url(url)
@@ -177,7 +180,7 @@ def get_mdwiki_other_url(path):
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
 
-def get_enwp_url_direct(path):
+def get_enwp_url_direct(path): # not used as causes random failure
     # ADD RETRY
     url = enwp_domain + path
     headers = get_request_headers()
@@ -198,7 +201,7 @@ def get_request_headers():
 def get_enwp_url(path):
     # ADD RETRY
     url = enwp_domain + path
-    enwp_session = CachedSession(enwp_db, backend='sqlite')
+    enwp_session = CachedSession(enwp_db, backend='sqlite', expire_after=expiry_days)
     #logging.info("Downloading from URL: %s\n", str(url))
     resp = enwp_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
@@ -362,10 +365,15 @@ def do_nonwiki(path, environ):
     elif path == nonwiki_url + 'lists/mdwikimed.tsv':
         with open(article_list, 'rb') as f:
             response_body = f.read()
+    elif path == nonwiki_url + 'commands/read-data':
+        try:
+            init()
+            response_body = b'OK'
+        except:
+            response_body = b'Init Failed'
     else:
         response_body = b'???'
     return status, response_headers, response_body
-
 
 def get_enwp_page_list():
     global enwp_list

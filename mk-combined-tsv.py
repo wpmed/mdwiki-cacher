@@ -4,22 +4,18 @@ import sys
 import requests
 import json
 import pymysql.cursors
+from datetime import datetime
+import argparse
 from common import *
 
 MDWIKI_CACHER_DATA = '/srv2/mdwiki-cacher/data/'
 DBPARAMS_FILE = MDWIKI_CACHER_DATA + 'dbparams.json'
+LOG_FILE = MDWIKI_CACHER_DATA + 'mdwiki-list.log'
+
 WPMED_LIST = 'http://download.openzim.org/wp1/enwiki/customs/medicine.tsv'
 
 import logging
 import logging.handlers
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.handlers.RotatingFileHandler(MDWIKI_CACHER_DATA + "mdwiki-list.log", 'a', maxBytes=5000, backupCount=10),
-        logging.StreamHandler()
-    ]
-)
 
 MAX_LOOPS = -1 # -1 is all, used for testing
 
@@ -51,14 +47,37 @@ mdwiki_rd_lookup = {}
 # add any page in mdwiki_rd_lookup not already there
 
 def main():
-    global mdwiki_list
+    set_logger(LOG_FILE)
 
+    args = parse_args()
+    # args.device is either value or None
+    if args.interactive: # allow override of path
+        sys.exit()
+
+    if args.force:
+        run_flag = True
+    else:
+        run_flag = can_run(args.force)
+
+    if run_flag:
+        if mk_combined():
+            logging.info('List Creation Succeeded.')
+            force_cache_reload() # call cacher to reread data
+
+def mk_combined():
+    global mdwiki_list
+    # Now start run
     logging.info('Getting list of pages from mdwiki.')
     mdwiki_list = get_mdwiki_list() # list from mdwiki api
+    if not mdwiki_list:
+        return False
     logging.info('Processing downloaded list of redirects from mdwiki.')
-    get_mdwiki_redirect_lists() # read from mdwiki db and process
+    if not get_mdwiki_redirect_lists(): # read from mdwiki db and process
+        return False
     logging.info('Getting list of pages from EN WP.')
     enwp_list = get_enwp_list() # list from kiwix medicine
+    if not enwp_list:
+        return False
 
     write_output(mdwiki_list, MDWIKI_CACHER_DATA + 'mdwiki.tsv')
     write_output(enwp_list, MDWIKI_CACHER_DATA + 'enwp.tsv')
@@ -84,10 +103,42 @@ def main():
     logging.info('Writing combined page list for mwoffliner.')
     write_output(combined, MDWIKI_CACHER_DATA + 'mdwikimed.tsv')
 
-    logging.info('List Creation Succeeded.')
-    sys.exit(0)
+    return True
 
-# https://en.wikipedia.org/w/api.php?action=query&prop=redirects&titles=Cilazapril
+def force_cache_reload():
+    read_data_url = 'http://offline.mdwiki.org/nonwiki/commands/read-data'
+    r = requests.get(read_data_url)
+    if r.status_code == 200:
+        logging.info('Mdwiki cacher loaded data.')
+    else:
+        logging.info('Mdwiki cacher Failed to load data.')
+    return
+
+def can_run(force):
+
+    last_run_date = get_last_run() # returns YYYY-MM-DD from end of log
+
+    if not last_run_date:
+        logging.error('Failed to get last run date. Exiting.')
+        return False
+
+    if last_run_date >= datetime.now().strftime('%Y-%m-01') and not force: # already ran this month
+        logging.info('Data already calculated for current month. Exiting.')
+        return False
+
+    if zimfarm_running('mdwiki'):
+        logging.error('MWOFFLINER mdwiki run in progress. Exiting.')
+        return False
+
+    if zimfarm_running('mdwiki_app'):
+        logging.error('MWOFFLINER mdwiki_app run in progress. Exiting.')
+        return False
+
+    if not is_medicine_tsv_avail():
+        logging.error('medicine.tsv not yet available for current month. Exiting.')
+        return False
+
+    return True
 
 def get_mdwiki_list(apfilterredir='nonredirects'):
     md_wiki_pages = []
@@ -102,8 +153,8 @@ def get_mdwiki_list(apfilterredir='nonredirects'):
                 r = requests.get(q + apcontinue).json()
             except Exception as error:
                 logging.error(error)
-                logging.error('Request failed. Exiting.')
-                sys.exit(1)
+                logging.error('Request mdwiki list failed. Exiting.')
+                return None
             pages = r['query']['allpages']
             apcontinue = r.get('continue',{}).get('apcontinue')
             for page in pages:
@@ -135,6 +186,7 @@ def get_mdwiki_redirect_lists():
     except Exception as error:
         logging.error(error)
         logging.error('Reading redirects from Database Failed.')
+        return
 
     for rd in mdwiki_redirects_hex:
         if rd['rd_to_namespace'] != 0: # skip if not in 0 namespace
@@ -179,7 +231,7 @@ def get_mdwiki_redirect_from_db():
 def get_enwp_list():
     enwp_pages = []
     try:
-        r = requests.get(WPMED_LIST) # medicine.tsv
+        r = requests.get(WPMED_LIST) # medicine.tsv - gets latest, but not necessarily this month so force can work
         wikimed_pages = r._content.decode().split('\n')
         for p in wikimed_pages[0:-1]:
             if p in EXCLUDE_PAGES:
@@ -201,6 +253,20 @@ def get_enwp_list():
         enwp_pages = []
     return enwp_pages
 
+def get_last_run():
+    # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
+    last_success_date = None
+    try:
+        log_list = read_file_list(LOG_FILE)
+        for i in reversed(log_list):
+            #print(i)
+            if 'List Creation Succeeded' in i:
+                last_success_date = i.split()[0]
+                break
+    except:
+        print('Log file does not exist or not readable.')
+    return last_success_date
+
 def write_output(data, output_file):
     try:
         with open(output_file, 'w') as f:
@@ -209,6 +275,22 @@ def write_output(data, output_file):
     except Exception as error:
         logging.error(error)
         logging.error('Failed to write to list file.')
+
+def set_logger(log_file):
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[
+            logging.handlers.RotatingFileHandler(log_file, 'a', maxBytes=5000, backupCount=10),
+            logging.StreamHandler()
+        ]
+    )
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Create or refresh page lists for mdwiki-cacher.")
+    parser.add_argument("-i", "--interactive", help="exit so can be run interactively", action="store_true")
+    parser.add_argument("-f", "--force", help="Run even if already run this month.", action="store_true")
+    return parser.parse_args()
 
 if __name__ == "__main__":
     main()
