@@ -356,12 +356,7 @@ def do_nonwiki(path, environ):
     status = '200 OK'
     response_headers = [('Content-type', 'text/plain')]
     if path == nonwiki_url + 'status':
-        # return env as test
-        refresh_hist = 'Refresh History:\n'
-        refresh_hist += read_file('cache-refresh-hist.txt')
-        env = 'Environment:\n' + dump(environ)
-        response_body = refresh_hist + env
-        response_body = response_body.encode()
+        response_body = get_cacher_stat(environ)
     elif path == nonwiki_url + 'lists/mdwikimed.tsv':
         with open(article_list, 'rb') as f:
             response_body = f.read()
@@ -374,6 +369,29 @@ def do_nonwiki(path, environ):
     else:
         response_body = b'???'
     return status, response_headers, response_body
+
+def get_cacher_stat(environ):
+    response_body = 'Cache Refresh History:\n'
+    response_body += read_file('cache-refresh-hist.txt')
+
+    response_body += '\nArticle Lists Refresh History:\n'
+    hist = read_file_list('data/mdwiki-list.log')
+    hist.reverse()
+    for i in hist:
+        response_body += i + '\n'
+        if 'List Creation Succeeded' in i:
+            break
+
+    response_body += '\nZim Farm (mdwiki) - '
+    stat =  get_zimfarm_stat('mdwiki')
+    response_body += stat['most_recent_task']['updated_at'] + ': ' + stat['most_recent_task']['status'] +'\n'
+    response_body += 'Zim Farm (mdwiki_app) - '
+    stat =  get_zimfarm_stat('mdwiki_app')
+    response_body += stat['most_recent_task']['updated_at'] + ': ' + stat['most_recent_task']['status'] +'\n'
+
+    env = '\nEnvironment:\n' + dump(environ)
+    response_body += env
+    return response_body.encode()
 
 def get_enwp_page_list():
     global enwp_list
