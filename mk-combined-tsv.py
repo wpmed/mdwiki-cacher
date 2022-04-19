@@ -77,7 +77,9 @@ def mk_combined():
     logging.info('Getting list of pages from EN WP.')
     enwp_list = get_enwp_list() # list from kiwix medicine
     if not enwp_list:
+        logging.info('Getting list of pages from EN WP Failed.')
         return False
+    logging.info('Getting list of pages from EN WP Succeeded.')
 
     write_output(mdwiki_list, MDWIKI_CACHER_DATA + 'mdwiki.tsv')
     write_output(enwp_list, MDWIKI_CACHER_DATA + 'enwp.tsv')
@@ -186,7 +188,7 @@ def get_mdwiki_redirect_lists():
     except Exception as error:
         logging.error(error)
         logging.error('Reading redirects from Database Failed.')
-        return
+        return False
 
     for rd in mdwiki_redirects_hex:
         if rd['rd_to_namespace'] != 0: # skip if not in 0 namespace
@@ -204,6 +206,8 @@ def get_mdwiki_redirect_lists():
         if rd_to_title not in mdwiki_rd_lookup:
             mdwiki_rd_lookup[rd_to_title] = []
         mdwiki_rd_lookup[rd_to_title].append({'pageid': rd['rd_from_id'], 'ns': rd['rd_to_namespace'], 'title': rd_from_title})
+
+    return True
 
 def get_mdwiki_redirect_from_db():
     try:
