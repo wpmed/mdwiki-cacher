@@ -11,6 +11,8 @@ from common import *
 MDWIKI_CACHER_DATA = '/srv2/mdwiki-cacher/data/'
 DBPARAMS_FILE = MDWIKI_CACHER_DATA + 'dbparams.json'
 LOG_FILE = MDWIKI_CACHER_DATA + 'mdwiki-list.log'
+LOG_MAX_BYTES = 5000
+LOG_BACKUP_COUNT = 5
 
 WPMED_LIST = 'http://download.openzim.org/wp1/enwiki/customs/medicine.tsv'
 
@@ -117,16 +119,20 @@ def force_cache_reload():
     return
 
 def can_run(force):
+    # force:
+    # if didn't find a last run date
+    # if already ran
 
-    last_run_date = get_last_run() # returns YYYY-MM-DD from end of log
+    if not force:
+        last_run_date = get_last_run() # returns YYYY-MM-DD from end of log
 
-    if not last_run_date:
-        logging.error('Failed to get last run date. Exiting.')
-        return False
+        if not last_run_date:
+            logging.error('Failed to get last run date. Exiting.')
+            return False
 
-    if last_run_date >= datetime.now().strftime('%Y-%m-01') and not force: # already ran this month
-        logging.info('Data already calculated for current month. Exiting.')
-        return False
+        if last_run_date >= datetime.now().strftime('%Y-%m-01'):
+            logging.info('Data already calculated for current month. Exiting.')
+            return False
 
     if zimfarm_running('mdwiki'):
         logging.error('MWOFFLINER mdwiki run in progress. Exiting.')
@@ -258,18 +264,29 @@ def get_enwp_list():
     return enwp_pages
 
 def get_last_run():
-    # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
-    last_success_date = None
+    # look for something like 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
+    last_success_date = read_last_run('') # check current log
+    if last_success_date:
+        return last_success_date
+
+    log_numbers = range(1, LOG_BACKUP_COUNT)
+    for log_number in log_numbers:
+        last_success_date = read_last_run('.' + str(log_number))
+        if last_success_date:
+            return last_success_date
+    return None
+
+def read_last_run(log_num_str):
     try:
-        log_list = read_file_list(LOG_FILE)
+        log_list = read_file_list(LOG_FILE + log_num_str)
         for i in reversed(log_list):
             #print(i)
             if 'List Creation Succeeded' in i:
                 last_success_date = i.split()[0]
-                break
+                return last_success_date
     except:
         print('Log file does not exist or not readable.')
-    return last_success_date
+    return None
 
 def write_output(data, output_file):
     try:
@@ -285,7 +302,7 @@ def set_logger(log_file):
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
-            logging.handlers.RotatingFileHandler(log_file, 'a', maxBytes=5000, backupCount=10),
+            logging.handlers.RotatingFileHandler(log_file, 'a', maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUP_COUNT),
             logging.StreamHandler()
         ]
     )
