@@ -9,6 +9,7 @@ from datetime import timedelta, date
 import time
 import requests
 import json
+import subprocess
 import argparse
 import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
@@ -44,6 +45,8 @@ videdit_page = 'https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=ht
 status503_list = []
 failed_url_list = []
 
+config = read_json_file('config.json')
+
 def main():
     global mdwiki_cached_urls
     global mdwiki_uncached_urls
@@ -76,6 +79,9 @@ def main():
         f.write(date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
 
     write_list(failed_url_list, 'failed_urls.txt')
+
+    if len(failed_url_list) > 0:
+        send_failed_url_email()
 
 def get_last_run():
     # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
@@ -211,6 +217,17 @@ def get_mdwiki_page_list():
         txt = f.read()
     # last item can be ''
     mdwiki_list = txt.split('\n')[:-1]
+
+def send_failed_url_email():
+    msg = 'Subject: Failed MdWiki URLs\n'
+    msg += 'This is an automated email on ' + date.today().strftime("%m/%d/%Y") + '\n'
+    msg += 'The following URLs failed to be added to the MdWiki cache:\n'
+    with open('/tmp/failed_url_email.txt', 'w') as f:
+        f.write(msg)
+        for d in failed_url_list:
+            f.write(d + '\n')
+    for email in config['to_email']:
+        completed_process = subprocess.run('/usr/sbin/sendmail ' + email + ' </tmp/failed_url_email.txt', shell=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Create or refresh cache for mdwiki-cacher.")
