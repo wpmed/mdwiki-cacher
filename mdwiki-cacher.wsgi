@@ -29,6 +29,8 @@ expiry_days = timedelta(days=7)
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
 
+VERSION = '0.5'
+
 # /robots.txt handled by nginx
 
 # these are probing queris at the start of a run
@@ -150,6 +152,11 @@ def get_mdwiki_api_url(path):
     #logging.info("Downloading from URL: %s\n", str(url))
     mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
     resp = mdwiki_session.get(url)
+    # return 404 if 500 error
+    if resp.status_code == 500:
+        print("Skipping Page with 500 Error: " + str(path))
+        return respond_404()
+
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
         resp = retry_url(url)
     # start_response(resp)
@@ -371,8 +378,9 @@ def do_nonwiki(path, environ):
     return status, response_headers, response_body
 
 def get_cacher_stat(environ):
-    response_body = 'Cache Refresh History:\n'
-    response_body += read_file('cache-refresh-hist.txt')
+    response_body = 'MdWiki Cacher Version: ' + VERSION + '\n'
+    response_body += 'Cache Refresh History:\n'
+    response_body += read_file_tail('cache-refresh-hist.txt')
 
     response_body += '\nArticle Lists Refresh History:\n'
     hist = read_file_list('data/mdwiki-list.log')
@@ -389,8 +397,14 @@ def get_cacher_stat(environ):
     stat =  get_zimfarm_stat('mdwiki_app')
     response_body += stat['most_recent_task']['updated_at'] + ': ' + stat['most_recent_task']['status'] +'\n'
 
-    env = '\nEnvironment:\n' + dump(environ)
-    response_body += env
+    response_body += '\nRecently Failed Requests:\n'
+    response_body += '(Ignore if have been fixed.)\n'
+    response_body += read_file('failed_urls.txt')
+
+
+    # don't really need env
+    #env = '\nEnvironment:\n' + dump(environ)
+    #response_body += env
     return response_body.encode()
 
 def get_enwp_page_list():

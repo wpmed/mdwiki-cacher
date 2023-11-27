@@ -53,6 +53,15 @@ def write_list(data, file):
         for d in data:
             f.write(d + '\n')
 
+def read_file_tail(file_path, num_lines=8):
+    text_list = read_file_list(file_path)
+    if num_lines >= len(text_list):
+        num_lines = 0
+    text = ''
+    for item in text_list[num_lines * -1:]:
+        text += item + '\n'
+    return text
+
 def read_file_list(file_path):
     text = read_file(file_path)
     text_list = text.split('\n')[:-1]
