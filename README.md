@@ -4,6 +4,7 @@
 
 - apt install python3-pip
 - pip3 install requests-cache
+- pip3 install pymysql
 
 ## Docs
 
@@ -31,6 +32,7 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - Generates the Article List that drives the zim creation process
 - Available at http://offline.mdwiki.org/nonwiki/lists/mdwikimed.tsv
 - Also generates lists of mdwiki pages, en wp pages, and redirects used by mdwiki-cacher.wsgi
+- Reads redirects from mdwiki db using dbparams
 - Causes reread of data by invoking http://offline.mdwiki.org/nonwiki/commands/read-data
 - OR can manually restart uwsgi after this runs so mdwiki-cacher.wsgi reloads the lists
 - Typically takes less than 2 minutes

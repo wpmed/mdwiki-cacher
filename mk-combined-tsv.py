@@ -8,7 +8,7 @@ from datetime import datetime
 import argparse
 from common import *
 
-MDWIKI_CACHER_DATA = '/srv2/mdwiki-cacher/data/'
+MDWIKI_CACHER_DATA = '/srv/mdwiki-cacher/data/'
 DBPARAMS_FILE = MDWIKI_CACHER_DATA + 'dbparams.json'
 LOG_FILE = MDWIKI_CACHER_DATA + 'mdwiki-list.log'
 LOG_MAX_BYTES = 5000
