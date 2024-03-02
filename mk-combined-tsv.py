@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# su - www-data -s /bin/bash -c '/srv2/mdwiki-cacher/mk-combined-tsv.py' for testing
+# su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py' for testing
 import sys
 import requests
 import json
