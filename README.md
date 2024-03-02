@@ -1,9 +1,13 @@
 # mdwiki-cacher
 
 ## Installs
+- run setup
+- edit /etc/crontab (see below)
 
-- apt install python3-pip
-- pip3 install requests-cache
+### Build initial caches
+- obtain /srv/mdwiki-cacherdata/dbparams.json file to access mdwiki.org database
+- su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py -f'
+
 
 ## Docs
 
@@ -17,8 +21,8 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - load-mdwiki-cache.py from May 17  2023
 - mk-combined-tsv.py from May 28  2022
 
-- These are in /srv2/downloads/mdwiki-cacher
-- These are branch 0.4
+- These are in git repo /opt/mdwiki-cacher
+- These are branch 0.5
 
 ### mdwiki-cacher.wsgi
 - Lives at http://offline.mdwiki.org
@@ -31,6 +35,7 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - Generates the Article List that drives the zim creation process
 - Available at http://offline.mdwiki.org/nonwiki/lists/mdwikimed.tsv
 - Also generates lists of mdwiki pages, en wp pages, and redirects used by mdwiki-cacher.wsgi
+- Reads redirects from mdwiki db using dbparams
 - Causes reread of data by invoking http://offline.mdwiki.org/nonwiki/commands/read-data
 - OR can manually restart uwsgi after this runs so mdwiki-cacher.wsgi reloads the lists
 - Typically takes less than 2 minutes
@@ -46,5 +51,8 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - mdwiki-cacher.wsgi  - root (can be www-data) and 644
 
 ### Cron jobs
-30 22 *  *  * www-data  /bin/bash -c '/srv2/mdwiki-cacher/mk-combined-tsv.py'
-0  1  *  *  7 www-data  /bin/bash -c '/srv2/mdwiki-cacher/load-mdwiki-cache.py'
+- add the following to /etc/crontab:
+
+# for mdwiki-cacher
+30 22 *  *  * www-data  /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py'
+0  1  *  *  7 www-data  /bin/bash -c '/srv/mdwiki-cacher/load-mdwiki-cache.py'

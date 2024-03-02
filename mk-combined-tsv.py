@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# su - www-data -s /bin/bash -c '/srv2/mdwiki-cacher/mk-combined-tsv.py' for testing
+# su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py' for testing
 import sys
 import requests
 import json
@@ -8,7 +8,7 @@ from datetime import datetime
 import argparse
 from common import *
 
-MDWIKI_CACHER_DATA = '/srv2/mdwiki-cacher/data/'
+MDWIKI_CACHER_DATA = '/srv/mdwiki-cacher/data/'
 DBPARAMS_FILE = MDWIKI_CACHER_DATA + 'dbparams.json'
 LOG_FILE = MDWIKI_CACHER_DATA + 'mdwiki-list.log'
 LOG_MAX_BYTES = 5000

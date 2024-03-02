@@ -1,0 +1,39 @@
+# mdwiki cacher setup
+apt install nginx uwsgi
+apt install sqlite3 # only to examine databases
+apt install sendmail
+apt install python3-requests-cache
+apt install python3-pymysql
+apt install uwsgi-plugin-python3
+
+# mounted vol on /srv - so everything changes a bit
+
+mkdir -p /srv/mdwiki-cacher/data
+chown www-data:www-data /srv/mdwiki-cacher
+chown www-data:www-data /srv/mdwiki-cacher/data
+
+cd /srv/mdwiki-cacher
+
+cp /opt/mdwiki-cacher/common.py .
+cp /opt/mdwiki-cacher/mdwiki-cacher.wsgi .
+cp /opt/mdwiki-cacher/load-mdwiki-cache.py .
+cp /opt/mdwiki-cacher/mk-combined-tsv.py .
+
+chown www-data:www-data load-mdwiki-cache.py
+# chmod +x load-mdwiki-cache.py
+
+chown www-data:www-data mk-combined-tsv.py
+# chmod +x mk-combined-tsv.py
+
+chmod 644 common.py
+chmod 644 mdwiki-cacher.wsgi
+
+cp /opt/mdwiki-cacher/config/mdwiki-cacher.ini /etc/uwsgi/apps-enabled
+cp /opt/mdwiki-cacher/config/mdwiki-cacher.conf  /etc/nginx/sites-available
+
+rm -f /etc/nginx/sites-enabled/default || true
+rm -f /etc/nginx/sites-enabled/mdwiki-cacher || true
+ln -s /etc/nginx/sites-available/mdwiki-cacher.conf /etc/nginx/sites-enabled/mdwiki-cacher
+
+systemct restart uwsgi
+systemctl reload nginx
