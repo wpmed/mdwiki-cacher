@@ -231,6 +231,7 @@ def get_mdwiki_redirect_from_db():
         cursor = dbconn.cursor()
         cursor.execute(query)
         result = cursor.fetchall()
+        dbconn.close()
         mdwiki_redirects_hex = json.loads(result[0][0]) # result is tuple with json embedded
         return mdwiki_redirects_hex
     except Exception as error:
