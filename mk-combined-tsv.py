@@ -72,9 +72,11 @@ def mk_combined():
     logging.info('Getting list of pages from mdwiki.')
     mdwiki_list = get_mdwiki_list() # list from mdwiki api
     if not mdwiki_list:
+        logging.info('Getting list of pages from mdwiki Failed.')
         return False
     logging.info('Processing downloaded list of redirects from mdwiki.')
     if not get_mdwiki_redirect_lists(): # read from mdwiki db and process
+        logging.info('Getting list of redirects from mdwiki')
         return False
     logging.info('Getting list of pages from EN WP.')
     enwp_list = get_enwp_list() # list from kiwix medicine

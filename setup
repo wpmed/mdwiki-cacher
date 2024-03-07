@@ -37,3 +37,6 @@ ln -s /etc/nginx/sites-available/mdwiki-cacher.conf /etc/nginx/sites-enabled/mdw
 
 systemct restart uwsgi
 systemctl reload nginx
+
+# Install tailscale for access to mdwiki mysql server
+curl -fsSL https://tailscale.com/install.sh | sh
