@@ -4,10 +4,22 @@
 - run setup
 - edit /etc/crontab (see below)
 
-### Build initial caches
-- obtain /srv/mdwiki-cacherdata/dbparams.json file to access mdwiki.org database
-- su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py -f'
+### Install tailscale for access to mdwiki mysql server
+- curl -fsSL https://tailscale.com/install.sh | sh
+- obtain auth key from skiznet
+# start tailscale with no inbound connections
+# ? disable iptables with --netfilter-mode off; on by default
+# subnets are blocked by default
 
+- tailscale up --shields-up --authkey <key obtained>
+- OR tailscale up --authkey <key obtained> --shields-up --netfilter-mode off
+
+- get IP address (currently 100.127.141.126)
+- authorize on Skiznet store
+
+### Build initial caches
+- obtain /srv/mdwiki-cacher/data/dbparams.json file to access mdwiki.org database
+- su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py -f'
 
 ## Docs
 

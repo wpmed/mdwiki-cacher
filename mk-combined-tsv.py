@@ -72,9 +72,11 @@ def mk_combined():
     logging.info('Getting list of pages from mdwiki.')
     mdwiki_list = get_mdwiki_list() # list from mdwiki api
     if not mdwiki_list:
+        logging.info('Getting list of pages from mdwiki Failed.')
         return False
     logging.info('Processing downloaded list of redirects from mdwiki.')
     if not get_mdwiki_redirect_lists(): # read from mdwiki db and process
+        logging.info('Getting list of redirects from mdwiki')
         return False
     logging.info('Getting list of pages from EN WP.')
     enwp_list = get_enwp_list() # list from kiwix medicine
@@ -231,6 +233,8 @@ def get_mdwiki_redirect_from_db():
         cursor = dbconn.cursor()
         cursor.execute(query)
         result = cursor.fetchall()
+        cursor.close()
+        dbconn.close()
         mdwiki_redirects_hex = json.loads(result[0][0]) # result is tuple with json embedded
         return mdwiki_redirects_hex
     except Exception as error:
