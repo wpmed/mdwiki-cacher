@@ -6,6 +6,9 @@ apt install python3-requests-cache
 apt install python3-pymysql
 apt install uwsgi-plugin-python3
 
+# Install tailscale for access to mdwiki mysql server
+curl -fsSL https://tailscale.com/install.sh | sh
+
 # mounted vol on /srv - so everything changes a bit
 
 mkdir -p /srv/mdwiki-cacher/data
@@ -35,8 +38,5 @@ rm -f /etc/nginx/sites-enabled/default || true
 rm -f /etc/nginx/sites-enabled/mdwiki-cacher || true
 ln -s /etc/nginx/sites-available/mdwiki-cacher.conf /etc/nginx/sites-enabled/mdwiki-cacher
 
-systemct restart uwsgi
+systemctl restart uwsgi
 systemctl reload nginx
-
-# Install tailscale for access to mdwiki mysql server
-curl -fsSL https://tailscale.com/install.sh | sh
