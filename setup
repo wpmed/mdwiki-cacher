@@ -5,6 +5,7 @@ apt install sendmail
 apt install python3-requests-cache
 apt install python3-pymysql
 apt install uwsgi-plugin-python3
+apt install cron
 
 # Install tailscale for access to mdwiki mysql server
 curl -fsSL https://tailscale.com/install.sh | sh
