@@ -26,19 +26,21 @@ enwp_db ='enwp'
 
 expiry_days = timedelta(days=7)
 
+mdwiki_intro_page = '/wiki/App%2FIntroPage'
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
 uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
 
 VERSION = '0.6'
-VERBOSE = True
+VERBOSE = False
+skipped_page_count = 0
 
 # /robots.txt handled by nginx
 
 # these are probing queris at the start of a run
 mdwiki_urls = ['/',
                 '/wiki/',
-                '/wiki/App%2FIntroPage',
+                mdwiki_intro_page,
                 '/api/rest_v1/page/mobile-sections/Main_Page',
                 '/api/rest_v1/page/html/Main_Page',
                 '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page=Main_Page',
@@ -61,6 +63,8 @@ def application(environ, start_response):
     print(req_uri)
     if req_method == 'GET':
         log_request(req_uri, environ)
+        if req_uri == mdwiki_intro_page: # reset count on start of run
+            skipped_page_count = 0
         if req_uri in mdwiki_urls: # some hardcoded urls that must go to mdwiki
             status, response_headers, response_body = get_mdwiki_other_url(req_uri)
 
@@ -70,7 +74,7 @@ def application(environ, start_response):
         else:
             status, response_headers, response_body = do_GET(req_uri)
             if VERBOSE:
-                print(status, response_headers, response_body)
+                print('Status: ' + status, response_headers, response_body)
         start_response(status, response_headers)
         # convert string response back to bytes
         # return [response_body.encode()]
@@ -247,7 +251,11 @@ def get_redir_path(path): # top level
             mdwiki_pageid = next(iter(batch_resp['query']['pages'])) # there should only be one
             title_page_ids[title] = {}
             title_page_ids[title]['mdwiki_pageid'] = mdwiki_pageid
+
+            ########### following line fails in mwoffliner-dev, but not in latest ############
+
             page_resp = batch_resp['query']['pages'][mdwiki_pageid]
+
             #pages_resp[title] = {}
             #pages_resp[title][mdwiki_pageid] = page_resp
             pages_resp[mdwiki_pageid] = page_resp
