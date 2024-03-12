@@ -28,8 +28,10 @@ expiry_days = timedelta(days=7)
 
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
+uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
 
-VERSION = '0.5'
+VERSION = '0.6'
+VERBOSE = True
 
 # /robots.txt handled by nginx
 
@@ -67,6 +69,8 @@ def application(environ, start_response):
 
         else:
             status, response_headers, response_body = do_GET(req_uri)
+            if VERBOSE:
+                print(status, response_headers, response_body)
         start_response(status, response_headers)
         # convert string response back to bytes
         # return [response_body.encode()]
@@ -111,8 +115,7 @@ def do_GET(path):
                 return get_enwp_url(path)
                 # return get_enwp_url_direct(path) # changed 3/5/2022
             else:
-                print("Skipping Unknown Page: " + str(path))
-                return respond_404()
+                return respond_404('Unknown', path)
         else:
             return get_mdwiki_other_url(path) # use mdwiki for anything else
 
@@ -128,14 +131,13 @@ def do_GET(path):
                 return get_enwp_url(path)
                 return get_enwp_url_direct(path) # changed 3/5/2022
             else:
-                return respond_404()
+                return respond_404('Unknown', path)
     elif path.startswith('/w/'):
         return get_mdwiki_other_url(path)
     elif path.startswith('/media/'):
         return get_mdwiki_other_url(path)
     else:
-        print("Skipping Unknown Page: " + str(path))
-        return respond_404()
+        return respond_404('Unknown', path)
 
 def do_POST():
     pass
@@ -154,11 +156,11 @@ def get_mdwiki_api_url(path):
     resp = mdwiki_session.get(url)
     # return 404 if 500 error
     if resp.status_code == 500:
-        print("Skipping Page with 500 Error: " + str(path))
-        return respond_404()
+        return respond_404('500 Error', path)
 
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('503 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -170,7 +172,8 @@ def get_mdwiki_wiki_url(path):
     mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
     resp = mdwiki_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('503 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -182,7 +185,8 @@ def get_mdwiki_other_url(path):
     mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
     resp = mdwiki_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('503 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -212,7 +216,8 @@ def get_enwp_url(path):
     #logging.info("Downloading from URL: %s\n", str(url))
     resp = enwp_session.get(url)
     if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('503 or Error', path)
 
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -311,7 +316,7 @@ def get_redir_path(path): # top level
 
     return status_code, headers, outp.encode()
 
-def retry_url( url):
+def retry_url( url): # no longer used
     print("Error or 503 in URL: " + str(url))
     sleep_secs = 20
     for i in range(10):
@@ -322,7 +327,8 @@ def retry_url( url):
         time.sleep(i * sleep_secs)
     return None
 
-def respond_404():
+def respond_404(reason, path):
+    print("Skipping " + reason + " Page: " + str(path))
     # REWRITE  send_response(404)
     # REWRITE  send_header('Content-type', 'text/html')
     # REWRITE  end_headers()
@@ -331,7 +337,6 @@ def respond_404():
     status_code = '404'
     body = b'Unknown Page'
     return status_code, headers, body
-
 
 def start_response( resp):
     # REWRITE  send_response(resp.status_code)
@@ -360,6 +365,7 @@ def get_mdwiki_redirects(rd_to_title):
 
 def do_nonwiki(path, environ):
     # all special non-wiki requests come here
+    global VERBOSE
     status = '200 OK'
     response_headers = [('Content-type', 'text/plain')]
     if path == nonwiki_url + 'status':
@@ -373,6 +379,15 @@ def do_nonwiki(path, environ):
             response_body = b'OK'
         except:
             response_body = b'Init Failed'
+    elif path == nonwiki_url + 'commands/read-log':
+        with open(uwsgi_log, 'rb') as f:
+            response_body = f.read()
+    elif path == nonwiki_url + 'commands/set-verbose-on':
+        VERBOSE = True
+        response_body = b'Verbose turned ON'
+    elif path == nonwiki_url + 'commands/set-verbose-off':
+        VERBOSE = False
+        response_body = b'Verbose turned OFF'
     else:
         response_body = b'???'
     return status, response_headers, response_body
