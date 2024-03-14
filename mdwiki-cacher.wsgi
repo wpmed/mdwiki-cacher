@@ -219,9 +219,9 @@ def get_enwp_url(path):
     enwp_session = CachedSession(enwp_db, backend='sqlite', expire_after=expiry_days)
     #logging.info("Downloading from URL: %s\n", str(url))
     resp = enwp_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
-        return respond_404('503 or Error', path)
+        return respond_404('EN WP Error', path)
 
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
