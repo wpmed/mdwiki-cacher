@@ -32,7 +32,7 @@ article_list = 'data/mdwikimed.tsv'
 uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
 
 VERSION = '0.6'
-VERBOSE = False
+VERBOSE = True
 skipped_page_count = 0
 
 # /robots.txt handled by nginx
@@ -153,6 +153,8 @@ def dump(environ):
     return response_body
 
 def get_mdwiki_api_url(path):
+    if VERBOSE:
+        print('In get_mdwiki_api_url', path)
     # ADD RETRY
     url = mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
@@ -183,6 +185,8 @@ def get_mdwiki_wiki_url(path):
     return breakout_resp(resp)
 
 def get_mdwiki_other_url(path):
+    if VERBOSE:
+        print('In get_mdwiki_other_url', path)
     # ADD RETRY
     url = mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
@@ -214,6 +218,8 @@ def get_request_headers():
     return headers
 
 def get_enwp_url(path):
+    if VERBOSE:
+        print('In get_enwp_url', path)
     # ADD RETRY
     url = enwp_domain + path
     enwp_session = CachedSession(enwp_db, backend='sqlite', expire_after=expiry_days)
