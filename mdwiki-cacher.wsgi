@@ -33,7 +33,7 @@ article_list = 'data/mdwikimed.tsv'
 uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
 
 VERSION = '0.6'
-VERBOSE = True
+VERBOSE = False
 skipped_page_count = 0
 
 # /robots.txt handled by nginx
