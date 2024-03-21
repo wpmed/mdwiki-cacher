@@ -346,7 +346,7 @@ def retry_url( url): # no longer used
     return None
 
 def respond_json(data_dict):
-    outp = json.dumps(data_dict))
+    outp = json.dumps(data_dict)
     status_code = '200'
     headers = [('Content-type', 'application/json; charset=utf-8')]
     return status_code, headers, outp.encode()
