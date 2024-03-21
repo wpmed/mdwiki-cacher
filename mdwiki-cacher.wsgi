@@ -11,6 +11,7 @@ from requests_cache import CachedSession
 from common import * # functions common to several modules
 
 mdwiki_list = []
+mdwiki_redirects = {}
 mdwiki_redirect_list = []
 mdwiki_rd_lookup = {}
 
@@ -318,17 +319,20 @@ def get_redir_path(path): # top level
     #print('***pages_resp')
     #print(pages_resp)
     batch_resp['query']['pages'] = pages_resp
+
+    return respond_json(batch_resp)
     #print('***batch_resp')
     #print(batch_resp)
 
-    outp = json.dumps(batch_resp)
+    #outp = json.dumps(batch_resp)
+
     # start_response(resp)
     # REWRITE  wfile.write(bytes(outp, "utf-8"))
 
-    status_code = '200'
-    headers = [('Content-type', 'application/json; charset=utf-8')]
+    #status_code = '200'
+    #headers = [('Content-type', 'application/json; charset=utf-8')]
 
-    return status_code, headers, outp.encode()
+    #return status_code, headers, outp.encode()
 
 def retry_url( url): # no longer used
     print("Error or 503 in URL: " + str(url))
@@ -340,6 +344,12 @@ def retry_url( url): # no longer used
         print('Retrying URL: ' + str(url))
         time.sleep(i * sleep_secs)
     return None
+
+def respond_json(data_dict):
+    outp = json.dumps(data_dict))
+    status_code = '200'
+    headers = [('Content-type', 'application/json; charset=utf-8')]
+    return status_code, headers, outp.encode()
 
 def respond_404(reason, path):
     print("Skipping " + reason + " Page: " + str(path))
@@ -393,9 +403,8 @@ def do_nonwiki(path, environ):
             response_body = b'OK'
         except:
             response_body = b'Init Failed'
-    elif path == nonwiki_url + 'commands/read-log':
-        with open(uwsgi_log, 'rb') as f:
-            response_body = f.read()
+    elif path == nonwiki_url + 'commands/get-redirects':
+        return respond_json(mdwiki_redirects)
     elif path == nonwiki_url + 'commands/set-verbose-on':
         VERBOSE = True
         response_body = b'Verbose turned ON'
@@ -468,6 +477,7 @@ def get_mdwiki_redirect_lists():
     #   rd_to_title_hex
     #   rd_from_name_hex
 
+    global mdwiki_redirects
     global mdwiki_redirect_list
     global mdwiki_rd_lookup
 
