@@ -37,6 +37,8 @@ request_paths =  []
 mdwiki_cached_urls = []
 mdwiki_uncached_urls = []
 mdwiki_uncached_pages = set()
+enwp_session = CachedSession(enwp_db, backend='sqlite')
+enwp_uncached_pages = set()
 un_zimmed_pages = set()
 CACHE_HIST_FILE = 'cache-refresh-hist.txt'
 
@@ -60,10 +62,11 @@ def main():
     if args.interactive: # allow override of path
         sys.exit()
 
-    refresh_cache_since = get_last_run()
+    # refresh_cache_since = get_last_run()
     get_mdwiki_page_list()
     # in ? earlier version of CachedSession this is mdwiki_session.cache.urls, not a function
-    mdwiki_cached_urls = mdwiki_session.cache.urls() # pretty slow
+    # mdwiki_cached_urls = mdwiki_session.cache.urls() # pretty slow
+    get_enwp_page_list()
 
 
     logging.info('Cache utilities ready\n')
@@ -206,7 +209,20 @@ def copy_cache(): # was run from mdwiki-cache/cache-tests
                         print('# %i Retrying URL: %s\n', i, str(url))
                         time.sleep(i * sleep_secs)
 
-def check_cache():
+def check_enwp_cache():
+    global enwp_uncached_pages
+    enwp_uncached_pages.clear()
+    for page in enwp_list:
+        url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
+        if not enwp_session.cache.contains(url=url):
+            enwp_uncached_pages.add(page)
+            print('Parse URL not cached: ', url)
+        url2 = videdit_page + page
+        if not enwp_session.cache.contains(url=url2):
+            enwp_uncached_pages.add(page)
+            print('Videdit URL not cached: ', url2)
+
+def check_cache_v1():
     global mdwiki_uncached_pages
     mdwiki_uncached_pages.clear()
     for page in mdwiki_list:
@@ -270,6 +286,14 @@ def get_mdwiki_page_list():
         txt = f.read()
     # last item can be ''
     mdwiki_list = txt.split('\n')[:-1]
+
+def get_enwp_page_list():
+    global enwp_list
+    print('Getting enwp pages')
+    with open('data/enwp.tsv') as f:
+        txt = f.read()
+    # last item can be ''
+    enwp_list = txt.split('\n')[:-1]
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Create or refresh cache for mdwiki-cacher.")
