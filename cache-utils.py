@@ -42,8 +42,9 @@ enwp_uncached_pages = set()
 un_zimmed_pages = set()
 CACHE_HIST_FILE = 'cache-refresh-hist.txt'
 
-parse_page = 'https://mdwiki.org/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
-videdit_page = 'https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
+parse_page = '/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
+videdit_page = '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
+
 
 # session = CachedSession(cache_control=True)
 # https://requests-cache.readthedocs.io/en/stable/user_guide/headers.html
@@ -212,6 +213,9 @@ def copy_cache(): # was run from mdwiki-cache/cache-tests
 def check_enwp_cache():
     global enwp_uncached_pages
     enwp_uncached_pages.clear()
+    parse_page = enwp_domain + parse_page
+    videdit_page = enwp_domain + videdit_page
+
     for page in enwp_list:
         url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
         if not enwp_session.cache.contains(url=url):
