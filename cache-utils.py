@@ -213,15 +213,15 @@ def copy_cache(): # was run from mdwiki-cache/cache-tests
 def check_enwp_cache():
     global enwp_uncached_pages
     enwp_uncached_pages.clear()
-    parse_page = enwp_domain + parse_page
-    videdit_page = enwp_domain + videdit_page
+    enwp_parse_page = enwp_domain + parse_page
+    enwp_videdit_page = enwp_domain + videdit_page
 
     for page in enwp_list:
-        url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
+        url = enwp_parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
         if not enwp_session.cache.contains(url=url):
             enwp_uncached_pages.add(page)
             print('Parse URL not cached: ', url)
-        url2 = videdit_page + page
+        url2 = enwp_videdit_page + page
         if not enwp_session.cache.contains(url=url2):
             enwp_uncached_pages.add(page)
             print('Videdit URL not cached: ', url2)
