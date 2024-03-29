@@ -24,10 +24,10 @@ RETRY_SECONDS = 20
 RETRY_LOOP = 10
 mdwiki_list = []
 mdwiki_domain = 'https://mdwiki.org'
-mdwiki_db  = 'mdwiki_api'
-mdwiki_cache  = SQLiteCache(db_path=mdwiki_db)
-mdwiki_session  = CachedSession(mdwiki_db, backend='sqlite')
-mdwiki_uncached_session  = CachedSession(mdwiki_db, backend='sqlite', expire_after=0)
+mdwiki_api_db  = 'mdwiki_api'
+mdwiki_cache  = SQLiteCache(db_path=mdwiki_api_db)
+mdwiki_session  = CachedSession(mdwiki_api_db, backend='sqlite')
+mdwiki_uncached_session  = CachedSession(mdwiki_api_db, backend='sqlite', expire_after=0)
 mdwiki_changed_list = []
 mdwiki_changed_rd = []
 enwp_list = []

@@ -165,9 +165,10 @@ def get_mdwiki_api_url(path):
     if resp.status_code == 500:
         return respond_404('500 Error', path)
 
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
-        return respond_404('503 or Error', path)
+        return respond_404('Not 200 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -178,9 +179,10 @@ def get_mdwiki_wiki_url(path):
     #logging.info("Downloading from URL: %s\n", str(url))
     mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
     resp = mdwiki_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
-        return respond_404('503 or Error', path)
+        return respond_404('Not 200 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -193,9 +195,10 @@ def get_mdwiki_other_url(path):
     #logging.info("Downloading from URL: %s\n", str(url))
     mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
     resp = mdwiki_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
-        return respond_404('503 or Error', path)
+        return respond_404('Not 200 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -205,10 +208,9 @@ def get_enwp_url_direct(path): # not used as causes random failure
     url = enwp_domain + path
     headers = get_request_headers()
     resp = requests.get(url, headers)
-    #if 'Portal' in resp.text:
-    #print(resp.text)
 
-    # REWRITE  wfile.write(resp.content)
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        return respond_404('Not 200 or Error', path)
     return breakout_resp(resp)
 
 def get_request_headers():

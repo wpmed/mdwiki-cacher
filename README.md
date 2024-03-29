@@ -65,6 +65,12 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 ### common.py
 - library used by other executables
 
+## Cache Databases
+- mdwiki_api_db  = 'mdwiki_api'
+- mdwiki_wiki_db  = 'mdwiki_wiki'
+- mdwiki_other_db  = 'mdwiki_other'
+- enwp_db ='enwp'
+
 ## Permissions
 - common - root and 644
 - mdwiki-cacher.wsgi  - root (can be www-data) and 644
