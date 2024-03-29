@@ -14,15 +14,16 @@ from requests_cache import CachedSession
 from requests_cache.backends.sqlite import SQLiteCache
 from common import *
 
-# set enwp cache to 1 or 7 day expire
+# ToDo set enwp cache to 1 or 7 day expire or check url against some date
 
-MDWIKI_CACHER_DIR = '/srv2/mdwiki-cacher/'
+MDWIKI_CACHER_DIR = '/srv/mdwiki-cacher/'
 os.chdir(MDWIKI_CACHER_DIR)
 
 # HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
-RETRY_LOOP = 10
+RETRY_LOOP = 2
 enwp_db ='enwp'
+enwp_session = CachedSession(enwp_db, backend='sqlite')
 
 enwp_list = []
 enwp_domain = 'https://en.wikipedia.org'
@@ -41,25 +42,31 @@ def main():
     for path in enwp_list:
         refresh_cache_page(path)
 
-    write_list(failed_url_list, 'failed_urls.txt')
+    write_list(failed_url_list, 'failed_enwp_urls.txt')
 
-def refresh_cache_page(page):
-    path = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
-    get_enwp_url(path)
-    path = videdit_page + page
-    get_enwp_url(path)
+def refresh_cache_page(page, retry=False, force_refresh=False):
+    url = enwp_domain + parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
+    get_enwp_url(url, retry, force_refresh)
+    url = enwp_domain + videdit_page + page
+    get_enwp_url(url, retry, force_refresh)
 
-def get_enwp_url(path): # read url to load cache
-    # ADD RETRY
-    url = enwp_domain + path
-    enwp_session = CachedSession(enwp_db, backend='sqlite')
-    #logging.info("Downloading from URL: %s\n", str(url))
-    resp = enwp_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+def get_enwp_url(url, retry, force_refresh): # read url to load cache
+    # check if url in cache
+    # if not get it to add to cache
+    # leave retry logic, but causes problems at enwp so set False
+    # ToDo add check for enwp edit after some date
+
+    if force_refresh or not enwp_session.cache.contains(url=url):
+        # logging.info('Getting URL: %s\n', str(url))
+        resp = enwp_session.get(url)
+        if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+            logging.error('Failed URL: %s\n', str(url))
+            failed_url_list.append(url)
+            if retry:
+                resp = retry_url(url)
 
     # REWRITE  wfile.write(resp.content)
-    return breakout_resp(resp)
+    return
 
 def retry_url(url):
     logging.info("Error or 503 in URL: %s\n", str(url))
@@ -119,7 +126,6 @@ def get_enwp_page_list():
         print(error)
         print('Failed to read enwp.tsv. Exiting.')
         sys.exit(1)
-
 
 def parse_args(): # for future
     parser = argparse.ArgumentParser(description="Create or refresh cache for mdwiki-cacher.")
