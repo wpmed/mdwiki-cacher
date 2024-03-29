@@ -39,6 +39,11 @@ def main():
     set_logger()
 
     get_enwp_page_list()
+
+    args = parse_args()
+    if args.interactive: # allow override of path
+        sys.exit()
+
     for path in enwp_list:
         refresh_cache_page(path)
 
