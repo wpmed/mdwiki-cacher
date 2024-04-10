@@ -11,7 +11,7 @@ import argparse
 import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-from requests_cache.backends.sqlite import SQLiteCache
+from requests_cache import RedisCache
 from common import *
 
 # ToDo set enwp cache to 1 or 7 day expire or check url against some date
@@ -20,18 +20,23 @@ MDWIKI_CACHER_DIR = '/srv/mdwiki-cacher/'
 os.chdir(MDWIKI_CACHER_DIR)
 
 # HOME_PAGE = 'App/IntroPage'
-RETRY_SECONDS = 20
-RETRY_LOOP = 2
+
 enwp_db ='enwp'
-enwp_session = CachedSession(enwp_db, backend='sqlite')
+enwp_session = CachedSession(enwp_db, backend='redis')
 
 enwp_list = []
 enwp_domain = 'https://en.wikipedia.org'
+enwp_api = enwp_domain + "/w/api.php"
 
 parse_page = '/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
 videdit_page = '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
 
+since_edit_date = '1945-04-01T14:13:19Z'
 failed_url_list = []
+
+# test pages
+p1 = 'Adenomere'
+p2 = 'Brivudine'
 
 def main():
     global enwp_list
@@ -41,21 +46,29 @@ def main():
     get_enwp_page_list()
 
     args = parse_args()
+    if args.all:
+        force_refresh = True
+    else:
+        force_refresh = False
     if args.interactive: # allow override of path
         sys.exit()
 
-    for path in enwp_list:
-        refresh_cache_page(path)
+    for page in enwp_list:
+        last_edit_date = get_last_edit_date(page)
+        if force_refresh or last_edit_date > since_edit_date:
+            refresh_cache_page(page, force_refresh=True)
+        else:
+            refresh_cache_page(page)
 
     write_list(failed_url_list, 'failed_enwp_urls.txt')
 
-def refresh_cache_page(page, retry=False, force_refresh=False):
+def refresh_cache_page(page, force_refresh=False):
     url = enwp_domain + parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
-    get_enwp_url(url, retry, force_refresh)
+    get_enwp_url(url, force_refresh)
     url = enwp_domain + videdit_page + page
-    get_enwp_url(url, retry, force_refresh)
+    get_enwp_url(url, force_refresh)
 
-def get_enwp_url(url, retry, force_refresh): # read url to load cache
+def get_enwp_url(url, force_refresh): # read url to load cache
     # check if url in cache
     # if not get it to add to cache
     # leave retry logic, but causes problems at enwp so set False
@@ -67,24 +80,19 @@ def get_enwp_url(url, retry, force_refresh): # read url to load cache
         if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
             logging.error('Failed URL: %s\n', str(url))
             failed_url_list.append(url)
-            if retry:
-                resp = retry_url(url)
-
-    # REWRITE  wfile.write(resp.content)
     return
 
-def retry_url(url):
-    logging.info("Error or 503 in URL: %s\n", str(url))
-    sleep_secs = 20
-    for i in range(10):
-        resp = requests.get(url)
-        if resp.status_code != 503 and not resp.content.startswith(b'{"error":'):
-            return resp
-        logging.info('Retrying URL: %s\n', str(url))
-        time.sleep(i * sleep_secs)
-    logging.error('Failed URL: %s\n', str(url))
-    failed_url_list.append(url)
-    return None
+def get_last_edit_date(page):
+    params = {
+        'action':"compare",
+        'format':"json",
+        'fromtitle':page,
+        'totitle':page,
+        'prop':'timestamp'
+    }
+    resp = requests.get(url=enwp_api, params=params)
+    data = resp.json()
+    return data['compare']['fromtimestamp']
 
 def breakout_resp(resp):
     headers = calc_resp_headers(resp)
