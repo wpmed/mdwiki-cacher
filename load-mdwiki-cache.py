@@ -14,7 +14,7 @@ import argparse
 import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-from requests_cache.backends.sqlite import SQLiteCache
+from requests_cache import RedisCache
 from common import *
 
 # HOME_PAGE = 'App/IntroPage'
@@ -23,9 +23,9 @@ RETRY_LOOP = 10
 mdwiki_list = []
 mdwiki_domain = 'https://mdwiki.org'
 mdwiki_db  = 'mdwiki_api'
-mdwiki_cache  = SQLiteCache(db_path=mdwiki_db)
-mdwiki_session  = CachedSession(mdwiki_db, backend='sqlite')
-mdwiki_uncached_session  = CachedSession(mdwiki_db, backend='sqlite', expire_after=0)
+mdwiki_cache  = RedisCache(db_path=mdwiki_db)
+mdwiki_session  = CachedSession(mdwiki_db, backend='redis')
+mdwiki_uncached_session  = CachedSession(mdwiki_db, backend='redis', expire_after=0)
 mdwiki_changed_list = []
 mdwiki_changed_rd = []
 enwp_list = []

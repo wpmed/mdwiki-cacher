@@ -32,7 +32,7 @@ nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
 uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
 
-VERSION = '0.6'
+VERSION = '0.7'
 VERBOSE = False
 skipped_page_count = 0
 
