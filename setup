@@ -41,3 +41,9 @@ ln -s /etc/nginx/sites-available/mdwiki-cacher.conf /etc/nginx/sites-enabled/mdw
 
 systemctl restart uwsgi
 systemctl reload nginx
+
+#################
+# filesystem cache
+#############
+
+mkdir -p /srv/cache

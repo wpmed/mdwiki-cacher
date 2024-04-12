@@ -3,7 +3,8 @@
 import os
 import logging
 import sys
-import datetime
+from datetime import timedelta, date
+import time
 import time
 import requests
 import json
@@ -13,37 +14,34 @@ from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
 from requests_cache import RedisCache
 from common import *
+import constants as CONST
 
 # ToDo set enwp cache to 1 or 7 day expire or check url against some date
 
 MDWIKI_CACHER_DIR = '/srv/mdwiki-cacher/'
 os.chdir(MDWIKI_CACHER_DIR)
 
-# HOME_PAGE = 'App/IntroPage'
-
-enwp_db ='enwp'
-enwp_session = CachedSession(enwp_db, backend='redis')
-
+enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
 enwp_list = []
-enwp_domain = 'https://en.wikipedia.org'
-enwp_api = enwp_domain + "/w/api.php"
-
-parse_page = '/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
-videdit_page = '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
-
-since_edit_date = '1945-04-01T14:13:19Z'
 failed_url_list = []
+
+ENWP_CACHE_HIST_FILE = 'enwp_cache-refresh-hist.txt'
+enwp_api = "https://en.wikipedia.org/w/api.php"
 
 # test pages
 p1 = 'Adenomere'
 p2 = 'Brivudine'
 
+VERBOSE = False
+
 def main():
     global enwp_list
 
     set_logger()
-
     get_enwp_page_list()
+
+    refresh_cache_since = '2024-04-01T14:13:19Z'
+    refresh_cache_since = '1945-03-03T00:00:00Z'
 
     args = parse_args()
     if args.all:
@@ -53,30 +51,56 @@ def main():
     if args.interactive: # allow override of path
         sys.exit()
 
+    refresh_cache_since = get_last_run()
+    if not refresh_cache_since:
+        sys.exit()
+
+    logging.info('Refreshing cached pages with changes since: %s\n', str(refresh_cache_since))
+
     for page in enwp_list:
-        last_edit_date = get_last_edit_date(page)
-        if force_refresh or last_edit_date > since_edit_date:
+        if force_refresh:
             refresh_cache_page(page, force_refresh=True)
         else:
-            refresh_cache_page(page)
+            last_edit_date = get_last_edit_date(page)
+            if last_edit_date > refresh_cache_since:
+                refresh_cache_page(page, force_refresh=True)
+            else:
+                refresh_cache_page(page)
+
+    logging.info('Cache refreshed\n')
+
+    with open(ENWP_CACHE_HIST_FILE, 'a') as f:
+        f.write(date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
 
     write_list(failed_url_list, 'failed_enwp_urls.txt')
 
+def get_last_run():
+    # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
+    last_success_date = None
+    try:
+        log_list = read_file_list(ENWP_CACHE_HIST_FILE)
+        last_success_date = log_list[-1]
+    except:
+        print('Log file does not exist or not readable.')
+    return last_success_date
+
+
 def refresh_cache_page(page, force_refresh=False):
-    url = enwp_domain + parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
+    url = CONST.enwp_domain + CONST.parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
     get_enwp_url(url, force_refresh)
-    url = enwp_domain + videdit_page + page
+    url = CONST.enwp_domain + CONST.videdit_page + page
     get_enwp_url(url, force_refresh)
 
 def get_enwp_url(url, force_refresh): # read url to load cache
     # check if url in cache
     # if not get it to add to cache
-    # leave retry logic, but causes problems at enwp so set False
-    # ToDo add check for enwp edit after some date
+    # no retry
 
-    if force_refresh or not enwp_session.cache.contains(url=url):
-        # logging.info('Getting URL: %s\n', str(url))
-        resp = enwp_session.get(url)
+    if force_refresh or not enwp_api_session.cache.contains(url=url):
+        global failed_url_list
+        if VERBOSE:
+            logging.info('Getting URL: %s\n', str(url))
+        resp = enwp_api_session.get(url)
         if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
             logging.error('Failed URL: %s\n', str(url))
             failed_url_list.append(url)

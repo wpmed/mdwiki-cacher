@@ -14,31 +14,28 @@ import argparse
 import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-from requests_cache import RedisCache
+from requests_cache import FileCache
+from requests_cache import DO_NOT_CACHE
 from common import *
+import constants as CONST
 
 # HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
 RETRY_LOOP = 10
 mdwiki_list = []
-mdwiki_domain = 'https://mdwiki.org'
-mdwiki_db  = 'mdwiki_api'
-mdwiki_cache  = RedisCache(db_path=mdwiki_db)
-mdwiki_session  = CachedSession(mdwiki_db, backend='redis')
-mdwiki_uncached_session  = CachedSession(mdwiki_db, backend='redis', expire_after=0)
 mdwiki_changed_list = []
 mdwiki_changed_rd = []
 enwp_list = []
-enwp_domain = 'https://en.wikipedia.org'
-enwp_db ='http_cache'
 request_paths =  []
 mdwiki_cached_urls = []
 mdwiki_uncached_urls = []
 mdwiki_uncached_pages = []
-CACHE_HIST_FILE = 'cache-refresh-hist.txt'
+MDWIKI_CACHE_HIST_FILE = 'mdwiki_cache-refresh-hist.txt'
 
-parse_page = 'https://mdwiki.org/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
-videdit_page = 'https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
+mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
+
+parse_page = CONST.mdwiki_domain + CONST.parse_page
+videdit_page = CONST.mdwiki_domain + CONST.videdit_page
 
 # session = CachedSession(cache_control=True)
 # https://requests-cache.readthedocs.io/en/stable/user_guide/headers.html
@@ -51,8 +48,10 @@ def main():
     global mdwiki_cached_urls
     global mdwiki_uncached_urls
     global mdwiki_uncached_pages
+    global mdwiki_list
 
     set_logger()
+    mdwiki_list = get_mdwiki_page_list()
 
     args = parse_args()
     # args.device is either value or None
@@ -75,10 +74,10 @@ def main():
     refresh_cache(refresh_cache_since)
     logging.info('Cache refreshed\n')
 
-    with open(CACHE_HIST_FILE, 'a') as f:
+    with open(MDWIKI_CACHE_HIST_FILE, 'a') as f:
         f.write(date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
 
-    write_list(failed_url_list, 'failed_urls.txt')
+    write_list(failed_url_list, 'failed_mdwiki_urls.txt')
 
     if len(failed_url_list) > 0:
         send_failed_url_email()
@@ -87,7 +86,7 @@ def get_last_run():
     # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
     last_success_date = None
     try:
-        log_list = read_file_list(CACHE_HIST_FILE)
+        log_list = read_file_list(MDWIKI_CACHE_HIST_FILE)
         last_success_date = log_list[-1]
     except:
         print('Log file does not exist or not readable.')
@@ -98,10 +97,9 @@ def refresh_cache(since):
     for page in mdwiki_changed_list:
         refresh_cache_page(page)
 
-def rebuild_cache(): # run interactively
+def rebuild_cache(mdwiki_list): # run interactively
     # see load_cache()
     set_logger()
-    get_mdwiki_page_list()
     logging.info('Starting to create cache')
     for page in mdwiki_list:
         refresh_cache_page(page)
@@ -129,14 +127,14 @@ def refresh_cache_url(url):
     global failed_url_list
     get_except = False
     try:
-        r = mdwiki_uncached_session.get(url)
+        r = CONST.uncached_session.get(url)
     except:
         get_except = True
 
     if get_except or r.status_code == 503 or r.content.startswith(b'{"error":'):
         r = retry_url(url)
     if r:
-        mdwiki_cache.save_response(r)
+        mdwiki_api_session.cache.save_response(r)
     else:
         logging.info('Failed to get URL: %s\n', str(url))
         failed_url_list.append(url)
@@ -206,17 +204,14 @@ def set_logger():
     logger.addHandler(file_handler)
     logger.addHandler(stdout_handler)
 
-###################################################
-# additional functions moved to load-cache=utils.py
-###################################################
-
 def get_mdwiki_page_list():
-    global mdwiki_list
+    mdwiki_list = []
     print('Getting mdwiki pages')
     with open('data/mdwiki.tsv') as f:
         txt = f.read()
     # last item can be ''
     mdwiki_list = txt.split('\n')[:-1]
+    return mdwiki_list
 
 def send_failed_url_email():
     msg = 'Subject: Failed MdWiki URLs\n'
