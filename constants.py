@@ -10,12 +10,14 @@ mdwiki_api_cache  = cache_dir + 'mdwiki_api'
 mdwiki_wiki_cache  = cache_dir + 'mdwiki_wiki'
 mdwiki_other_cache  = cache_dir + 'mdwiki_other'
 enwp_api_cache = cache_dir + 'enwp_api'
+enwp_other_cache = cache_dir + 'enwp_other'
 
 # paste these
 # mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
 # mdwiki_wiki_session = CachedSession(CONST.mdwiki_wiki_cache, backend='filesystem')
 # mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem')
-# enwp_session = CachedSession(CONST.enwp_cache, backend='filesystem')
+# enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
+# enwp_other_session = CachedSession(CONST.enwp_api_other_cache, backend='filesystem')
 
 VERSION = '0.8'
 

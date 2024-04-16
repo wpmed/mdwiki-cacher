@@ -9,10 +9,9 @@ import time
 import requests
 import json
 import argparse
-import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-from requests_cache import RedisCache
+from requests_cache import FileCache
 from common import *
 import constants as CONST
 
@@ -140,7 +139,7 @@ def set_logger():
     stdout_handler.setLevel(logging.INFO)
     stdout_handler.setFormatter(formatter)
 
-    file_handler = logging.FileHandler('mdwiki-refresh-cache.log')
+    file_handler = logging.FileHandler('enwp-refresh-cache.log')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 

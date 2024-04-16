@@ -9,30 +9,36 @@ import base64
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
 from common import * # functions common to several modules
+import constants as CONST
 
 mdwiki_list = []
 mdwiki_redirects = {}
 mdwiki_redirect_list = []
 mdwiki_rd_lookup = {}
-
-mdwiki_domain = 'https://mdwiki.org'
 enwp_list = []
-enwp_domain = 'https://en.wikipedia.org'
 
-mdwiki_api_db  = 'mdwiki_api'
-# these have 7 day expiry
-mdwiki_wiki_db  = 'mdwiki_wiki'
-mdwiki_other_db  = 'mdwiki_other'
-enwp_db ='enwp'
+# replaced with constants
+# mdwiki_domain = 'https://mdwiki.org'
+# enwp_domain = 'https://en.wikipedia.org'
+# mdwiki_api_db  = 'mdwiki_api'
+# mdwiki_wiki_db  = 'mdwiki_wiki'
+# mdwiki_other_db  = 'mdwiki_other'
+# enwp_db ='enwp'
 
 expiry_days = timedelta(days=7)
+
+mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
+mdwiki_wiki_session = CachedSession(CONST.mdwiki_wiki_cache, backend='filesystem', expire_after=expiry_days)
+mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem', expire_after=expiry_days)
+enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
+enwp_other_session = CachedSession(CONST.enwp_other_cache, backend='filesystem', expire_after=expiry_days)
 
 mdwiki_intro_page = '/wiki/App%2FIntroPage'
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
 uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
 
-VERSION = '0.7'
+VERSION = CONST.VERSION
 VERBOSE = False
 skipped_page_count = 0
 
@@ -117,7 +123,7 @@ def do_GET(path):
             if page in mdwiki_list:
                 return get_mdwiki_api_url(path)
             elif page in enwp_list:
-                return get_enwp_url(path)
+                return get_enwp_api_url(path)
                 # return get_enwp_url_direct(path) # changed 3/5/2022
             else:
                 return respond_404('Unknown', path)
@@ -133,8 +139,8 @@ def do_GET(path):
             if article in mdwiki_list:
                 return get_mdwiki_wiki_url(path)
             elif article in enwp_list:
-                return get_enwp_url(path)
-                return get_enwp_url_direct(path) # changed 3/5/2022
+                return get_enwp_other_url(path)
+                # return get_enwp_url_direct(path) # changed 3/5/2022
             else:
                 return respond_404('Unknown', path)
     elif path.startswith('/w/'):
@@ -157,10 +163,10 @@ def get_mdwiki_api_url(path):
     if VERBOSE:
         print('In get_mdwiki_api_url', path)
     # ADD RETRY
-    url = mdwiki_domain + path
+    url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
-    resp = mdwiki_session.get(url)
+    # mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
+    resp = mdwiki_api_session.get(url)
     # return 404 if 500 error
     if resp.status_code == 500:
         return respond_404('500 Error', path)
@@ -175,10 +181,10 @@ def get_mdwiki_api_url(path):
 
 def get_mdwiki_wiki_url(path):
     # ADD RETRY
-    url = mdwiki_domain + path
+    url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
-    resp = mdwiki_session.get(url)
+    # mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
+    resp = mdwiki_wiki_session.get(url)
     # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
     if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
@@ -191,10 +197,10 @@ def get_mdwiki_other_url(path):
     if VERBOSE:
         print('In get_mdwiki_other_url', path)
     # ADD RETRY
-    url = mdwiki_domain + path
+    url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
-    resp = mdwiki_session.get(url)
+    # mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
+    resp = mdwiki_other_session.get(url)
     # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
     if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
@@ -205,7 +211,7 @@ def get_mdwiki_other_url(path):
 
 def get_enwp_url_direct(path): # not used as causes random failure
     # ADD RETRY
-    url = enwp_domain + path
+    url = CONST.enwp_domain + path
     headers = get_request_headers()
     resp = requests.get(url, headers)
 
@@ -220,14 +226,27 @@ def get_request_headers():
     headers['Connection'] = 'close'
     return headers
 
-def get_enwp_url(path):
+def get_enwp_api_url(path):
     if VERBOSE:
-        print('In get_enwp_url', path)
+        print('In get_enwp_api_url', path)
     # ADD RETRY
-    url = enwp_domain + path
-    enwp_session = CachedSession(enwp_db, backend='sqlite', expire_after=expiry_days)
+    url = CONST.enwp_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    resp = enwp_session.get(url)
+    resp = enwp_api_session.get(url)
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('EN WP Error', path)
+
+    # REWRITE  wfile.write(resp.content)
+    return breakout_resp(resp)
+
+def get_enwp_other_url(path):
+    if VERBOSE:
+        print('In get_enwp_other_url', path)
+    # ADD RETRY
+    url = CONST.enwp_domain + path
+    #logging.info("Downloading from URL: %s\n", str(url))
+    resp = enwp_other_session.get(url)
     if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
         return respond_404('EN WP Error', path)

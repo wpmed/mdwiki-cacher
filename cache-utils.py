@@ -13,39 +13,40 @@ import time
 import requests
 import json
 import argparse
-import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-from requests_cache import RedisCache
+from requests_cache import FileCache
+from requests_cache import DO_NOT_CACHE
+
 from common import *
+import constants as CONST
 
 # HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
 RETRY_LOOP = 10
 mdwiki_list = []
-mdwiki_domain = 'https://mdwiki.org'
+
 mdwiki_api_db  = 'mdwiki_api'
-mdwiki_cache  = RedisCache(db_path=mdwiki_api_db)
-mdwiki_session  = CachedSession(mdwiki_api_db, backend='redis')
-mdwiki_uncached_session  = CachedSession(mdwiki_api_db, backend='redis', expire_after=0)
+mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
+mdwiki_wiki_session = CachedSession(CONST.mdwiki_wiki_cache, backend='filesystem')
+mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem')
+enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
+
+
+parse_page = CONST.mdwiki_domain + CONST.parse_page
+videdit_page = CONST.mdwiki_domain + CONST.videdit_page
+
 mdwiki_changed_list = []
 mdwiki_changed_rd = []
 enwp_list = []
-enwp_domain = 'https://en.wikipedia.org'
-# enwp_db ='http_cache'
-enwp_db ='enwp'
+
 request_paths =  []
 mdwiki_cached_urls = []
 mdwiki_uncached_urls = []
 mdwiki_uncached_pages = set()
-enwp_session = CachedSession(enwp_db, backend='redis')
+
 enwp_uncached_pages = set()
 un_zimmed_pages = set()
-CACHE_HIST_FILE = 'cache-refresh-hist.txt'
-
-parse_page = '/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
-videdit_page = '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
-
 
 # session = CachedSession(cache_control=True)
 # https://requests-cache.readthedocs.io/en/stable/user_guide/headers.html
@@ -73,49 +74,6 @@ def main():
 
     logging.info('Cache utilities ready\n')
 
-def get_last_run():
-    # look for 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
-    last_success_date = None
-    try:
-        log_list = read_file_list(CACHE_HIST_FILE)
-        last_success_date = log_list[-1]
-    except:
-        print('Log file does not exist or not readable.')
-    return last_success_date
-
-def get_mdwiki_changed_page_list(since):
-    global mdwiki_changed_list
-    global mdwiki_changed_rd
-    mdwiki_changed_list = []
-    mdwiki_changed_rd = []
-    #since = '2021-11-01T00:00:00Z'
-    # q = 'https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges&rclimit=max&rcnamespace=0|4&rctoponly'
-    q = 'https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges&rclimit=max&rctoponly&rcprop=redirect|title'
-    q += '&rcnamespace=0&rcstart=now&rcend=' + since
-    rccontinue_param = ''
-    loop_count = -1
-    while(loop_count):
-        try:
-            r = requests.get(q + rccontinue_param).json()
-        except Exception as error:
-            logging.error(error)
-            logging.error('Request failed. Exiting.')
-            sys.exit(1)
-        pages = r['query']['recentchanges']
-        rccontinue = r.get('continue',{}).get('rccontinue')
-        print(rccontinue)
-        for page in pages:
-            if page in mdwiki_changed_list:
-                print(page + ' encountered more than once')
-            if page.get('redirect') == '':
-                mdwiki_changed_rd.append(page['title'].replace(' ', '_'))
-            else:
-                mdwiki_changed_list.append(page['title'].replace(' ', '_'))
-        if not rccontinue:
-            break
-        rccontinue_param = '&rccontinue=' + rccontinue
-        loop_count -= 1
-
 def set_logger():
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
@@ -126,7 +84,7 @@ def set_logger():
     stdout_handler.setLevel(logging.INFO)
     stdout_handler.setFormatter(formatter)
 
-    file_handler = logging.FileHandler('mdwiki-refresh-cache.log')
+    file_handler = logging.FileHandler('cache-utilities.log')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 
@@ -169,7 +127,7 @@ def add_to_cache():
     for url in mdwiki_uncached_urls:
         print('Getting ' + url)
         for i in range(10):
-            resp = mdwiki_session.get(url)
+            resp = mdwiki_api_session.get(url)
             if resp.status_code == 503:
                 status503_list.append(url)
                 print('# %i Retrying URL: %s\n', i, str(url))
@@ -178,7 +136,7 @@ def add_to_cache():
                 if resp.status_code != 200:
                     print(url)
                 break
-# ToDo convert to redis
+# ToDo convert to filesystem
 def NONE_copy_cache(): # was run from mdwiki-cache/cache-tests
     src_db ='../http_cache.sqlite'
     src_db ='has_errors.sqlite'

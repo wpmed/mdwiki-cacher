@@ -22,9 +22,15 @@ import logging.handlers
 MAX_LOOPS = -1 # -1 is all, used for testing
 
 # these pages cause mwoffliner to fail when used with cacher
-EXCLUDE_PAGES = ['1%_Rule_(aviation_medicine)',
-                '1%_rule_(aviation_medicine)',
-                'Nitrous_oxide_50%-oxygen_50%']
+ENWP_EXCLUDE_PAGES = ['1%_Rule_(aviation_medicine)',
+    '1%_rule_(aviation_medicine)',
+    'Nitrous_oxide_50%-oxygen_50%']
+
+MDWIKI_EXCLUDE_PAGES = ['Citation/CS1/styles.css',
+    'Infobox/styles.css',
+    'Navbar/styles.css',
+    'Navbox/styles.css',
+    'Reflist/styles.css']
 
 mdwiki_list = []
 mdwiki_redirects_raw = {}
@@ -169,7 +175,8 @@ def get_mdwiki_list(apfilterredir='nonredirects'):
             apcontinue = r.get('continue',{}).get('apcontinue')
             for page in pages:
                 #allpages[page['title']] = page
-                md_wiki_pages.append(page['title'].replace(' ', '_'))
+                if page not in MDWIKI_EXCLUDE_PAGES:
+                    md_wiki_pages.append(page['title'].replace(' ', '_'))
             if not apcontinue:
                 break
             loop_count -= 1
@@ -248,7 +255,7 @@ def get_enwp_list():
         r = requests.get(WPMED_LIST) # medicine.tsv - gets latest, but not necessarily this month so force can work
         wikimed_pages = r._content.decode().split('\n')
         for p in wikimed_pages[0:-1]:
-            if p in EXCLUDE_PAGES:
+            if p in ENWP_EXCLUDE_PAGES:
                 continue
 
             # Do Not Exclude because is somewhere in mdwiki titles

@@ -11,13 +11,15 @@ import requests
 import json
 import subprocess
 import argparse
-import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
 from requests_cache import FileCache
 from requests_cache import DO_NOT_CACHE
 from common import *
 import constants as CONST
+
+# To Do
+# Should we force inclusion of failed articles from previous run?
 
 # HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
