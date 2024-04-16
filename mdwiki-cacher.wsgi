@@ -438,8 +438,10 @@ def do_nonwiki(path, environ):
 
 def get_cacher_stat(environ):
     response_body = 'MdWiki Cacher Version: ' + VERSION + '\n'
-    response_body += 'Cache Refresh History:\n'
-    response_body += read_file_tail('cache-refresh-hist.txt')
+    response_body += 'MDWiki Cache Refresh History:\n'
+    response_body += read_file_tail('mdwiki_cache-refresh-hist.txt')
+    response_body += 'ENWP Cache Refresh History:\n'
+    response_body += read_file_tail('enwp_cache-refresh-hist.txt')
 
     response_body += '\nArticle Lists Refresh History:\n'
     hist = read_file_list('data/mdwiki-list.log')
