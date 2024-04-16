@@ -264,8 +264,8 @@ def get_redir_path(path): # top level
     titles = args['titles'][0].split('|')
     base_query = path.split('&titles=')[0] + '&titles='
     more_rd_query = '/w/api.php?action=query&format=json&prop=redirects&rdlimit=max&rdnamespace=0&redirects=true&titles='
-    enwp_session = CachedSession(enwp_db, backend='sqlite')
-    mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
+    # enwp_session = CachedSession(enwp_db, backend='sqlite')
+    # mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
     pages_resp = {}
     title_page_ids = {}
     for title in titles:
@@ -273,7 +273,7 @@ def get_redir_path(path): # top level
             #print(f'Getting redirect for {title}')
             # remove redirect from query
             query = base_query.replace('&prop=redirects%7C', '&prop=') + title
-            resp = mdwiki_session.get(mdwiki_domain + query)
+            resp = mdwiki_api_session.get(CONST.mdwiki_domain + query)
             #resp = requests.session.get(mdwiki_domain + query)
             batch_resp = json.loads(resp.content)
             mdwiki_pageid = next(iter(batch_resp['query']['pages'])) # there should only be one
@@ -301,7 +301,7 @@ def get_redir_path(path): # top level
             # excluded in mk-combined
             if title in enwp_list:
                 # now get list from enwp
-                enwp_resp = enwp_session.get(enwp_domain + more_rd_query + title)
+                enwp_resp = enwp_api_session.get(CONST.enwp_domain + more_rd_query + title)
                 wp_batch_resp = json.loads(enwp_resp.content)
                 enwp_pageid = next(iter(wp_batch_resp['query']['pages'])) # there should only be one
                 enwp_rd = wp_batch_resp['query']['pages'][enwp_pageid].get('redirects', []) # make it have an empty list instead of no list
@@ -317,7 +317,7 @@ def get_redir_path(path): # top level
                 #pages_resp[title][mdwiki_pageid]['redirects'] = redirects
                 pages_resp[mdwiki_pageid]['redirects'] = redirects
         else: # do one enwp title that is not in mdwiki
-            resp = enwp_session.get(enwp_domain + base_query + title)
+            resp = enwp_api_session.get(CONST.enwp_domain + base_query + title)
             #enwp_resp = requests.session.get(enwp_domain + base_query + title)
             batch_resp = json.loads(resp.content)
             enwp_pageid = next(iter(batch_resp['query']['pages'])) # there should only be one
