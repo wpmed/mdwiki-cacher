@@ -460,7 +460,7 @@ def get_cacher_stat(environ):
 
     response_body += '\nRecently Failed Requests:\n'
     response_body += '(Ignore if have been fixed.)\n'
-    response_body += read_file('failed_urls.txt')
+    response_body += read_file('failed_mdwiki_urls.txt')
 
 
     # don't really need env
