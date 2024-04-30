@@ -37,6 +37,7 @@ mdwiki_intro_page = '/wiki/App%2FIntroPage'
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
 uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
+extract_api = '/w/api.php?action=query&format=json&titles='
 
 VERSION = CONST.VERSION
 VERBOSE = False
@@ -123,7 +124,7 @@ def do_GET(path):
             if page in mdwiki_list:
                 return get_mdwiki_api_url(path)
             elif page in enwp_list:
-                return get_enwp_api_url(path)
+                return get_enwp_api_url(path, page)
                 # return get_enwp_url_direct(path) # changed 3/5/2022
             else:
                 return respond_404('Unknown', path)
@@ -226,12 +227,19 @@ def get_request_headers():
     headers['Connection'] = 'close'
     return headers
 
-def get_enwp_api_url(path):
+def get_enwp_api_url(path, page):
     if VERBOSE:
         print('In get_enwp_api_url', path)
     # ADD RETRY
     url = CONST.enwp_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
+
+    # Make sure page is still there to handle case where was deleted after caching
+    # Can also be in medicine.tsv but later deleted
+    resp = requests.get(CONST.enwp_domain + extract_api + page)
+    if list(resp.json()['query']['pages'])[0] == '-1': # page not found
+        return respond_404('EN WP Error', path)
+
     resp = enwp_api_session.get(url)
     if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
