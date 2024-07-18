@@ -129,7 +129,7 @@ def refresh_cache_url(url):
     global failed_url_list
     get_except = False
     try:
-        r = CONST.uncached_session.get(url)
+        r = CONST.uncached_session.get(url, headers=CONST.cacher_headers)
     except:
         get_except = True
 
@@ -147,7 +147,7 @@ def retry_url(url):
     for i in range(10):
         get_except = False
         try:
-            resp = requests.get(url) # did not use mdwiki_uncached_session to avoid conflict on retry
+            resp = requests.get(url, headers=CONST.cacher_headers) # did not use mdwiki_uncached_session to avoid conflict on retry
         except:
             get_except = True
         if not get_except and resp.status_code != 503 and not resp.content.startswith(b'{"error":'):
@@ -169,7 +169,7 @@ def get_mdwiki_changed_page_list(since):
     loop_count = -1
     while(loop_count):
         try:
-            r = requests.get(q + rccontinue_param).json()
+            r = requests.get(q + rccontinue_param, headers=CONST.cacher_headers).json()
         except Exception as error:
             logging.error(error)
             logging.error('Request failed. Exiting.')
