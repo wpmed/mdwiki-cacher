@@ -1,7 +1,5 @@
 # constants
 
-from requests_cache import CachedSession, FileCache, DO_NOT_CACHE
-
 VERSION = '0.8.1'
 
 mdwiki_domain = 'https://mdwiki.org'
@@ -23,8 +21,7 @@ cacher_headers =  {'User-Agent': user_agent}
 # mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem')
 # enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
 # enwp_other_session = CachedSession(CONST.enwp_api_other_cache, backend='filesystem')
+# uncached_session = CachedSession(expire_after=DO_NOT_CACHE)
 
 parse_page = '/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
 videdit_page = '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
-
-uncached_session = CachedSession(expire_after=DO_NOT_CACHE)

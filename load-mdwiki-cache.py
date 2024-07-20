@@ -130,7 +130,7 @@ def refresh_cache_url(url):
     global failed_url_list
     get_except = False
     try:
-        r = CONST.uncached_session.get(url, headers=CONST.cacher_headers)
+        r = uncached_session.get(url, headers=CONST.cacher_headers)
     except:
         get_except = True
 
