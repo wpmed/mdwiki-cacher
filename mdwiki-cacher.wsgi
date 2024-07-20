@@ -167,7 +167,7 @@ def get_mdwiki_api_url(path):
     url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
     # mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
-    resp = mdwiki_api_session.get(url)
+    resp = mdwiki_api_session.get(url, headers=CONST.cacher_headers)
     # return 404 if 500 error
     if resp.status_code == 500:
         return respond_404('500 Error', path)
@@ -185,7 +185,7 @@ def get_mdwiki_wiki_url(path):
     url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
     # mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
-    resp = mdwiki_wiki_session.get(url)
+    resp = mdwiki_wiki_session.get(url, headers=CONST.cacher_headers)
     # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
     if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
@@ -201,7 +201,7 @@ def get_mdwiki_other_url(path):
     url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
     # mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
-    resp = mdwiki_other_session.get(url)
+    resp = mdwiki_other_session.get(url, headers=CONST.cacher_headers)
     # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
     if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
         # resp = retry_url(url) only retry in load cache
@@ -281,7 +281,7 @@ def get_redir_path(path): # top level
             #print(f'Getting redirect for {title}')
             # remove redirect from query
             query = base_query.replace('&prop=redirects%7C', '&prop=') + title
-            resp = mdwiki_api_session.get(CONST.mdwiki_domain + query)
+            resp = mdwiki_api_session.get(CONST.mdwiki_domain + query, headers=CONST.cacher_headers)
             #resp = requests.session.get(mdwiki_domain + query)
             batch_resp = json.loads(resp.content)
             mdwiki_pageid = next(iter(batch_resp['query']['pages'])) # there should only be one
