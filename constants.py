@@ -2,6 +2,8 @@
 
 from requests_cache import CachedSession, FileCache, DO_NOT_CACHE
 
+VERSION = '0.8.1'
+
 mdwiki_domain = 'https://mdwiki.org'
 enwp_domain = 'https://en.wikipedia.org'
 
@@ -12,7 +14,8 @@ mdwiki_other_cache  = cache_dir + 'mdwiki_other'
 enwp_api_cache = cache_dir + 'enwp_api'
 enwp_other_cache = cache_dir + 'enwp_other'
 
-cacher_headers =  {'User-Agent': 'MDWikiCacher/0.8.1 (https://mdwiki.wmcloud.org/nonwiki/status)'}
+user_agent = 'MDWikiCacher/' + VERSION + ' (https://mdwiki.wmcloud.org/nonwiki/status)'
+cacher_headers =  {'User-Agent': user_agent}
 
 # paste these
 # mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
@@ -20,8 +23,6 @@ cacher_headers =  {'User-Agent': 'MDWikiCacher/0.8.1 (https://mdwiki.wmcloud.org
 # mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem')
 # enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
 # enwp_other_session = CachedSession(CONST.enwp_api_other_cache, backend='filesystem')
-
-VERSION = '0.8.1'
 
 parse_page = '/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
 videdit_page = '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='

@@ -118,7 +118,7 @@ def mk_combined():
     return True
 
 def force_cache_reload():
-    read_data_url = 'http://offline.mdwiki.org/nonwiki/commands/read-data'
+    read_data_url = 'https://mdwiki.wmcloud.org/nonwiki/commands/read-data'
     r = requests.get(read_data_url)
     if r.status_code == 200:
         logging.info('Mdwiki cacher loaded data.')
@@ -130,6 +130,8 @@ def can_run(force):
     # force:
     # if didn't find a last run date
     # if already ran
+    # 7/20/2024 medicine.tsv is not being produced so allow old one
+    # In future we may retry later in month
 
     if not force:
         last_run_date = get_last_run() # returns YYYY-MM-DD from end of log
@@ -151,8 +153,8 @@ def can_run(force):
         return False
 
     if not is_medicine_tsv_avail():
-        logging.error('medicine.tsv not yet available for current month. Exiting.')
-        return False
+        logging.info('medicine.tsv not available for current month. Using old copy.')
+    #   return False
 
     return True
 

@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/load-mdwiki-cache.py' for testing
+# su - www-data -s /bin/bash -c 'python3 -i /srv/mdwiki-cacher/load-mdwiki-cache.py -i'
 import os
 MDWIKI_CACHER_DIR = '/srv/mdwiki-cacher/'
 os.chdir(MDWIKI_CACHER_DIR)
