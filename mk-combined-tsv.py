@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py' for testing
+# su - www-data -s /bin/bash -c 'python3 -i /srv/mdwiki-cacher/mk-combined-tsv.py -i'
 import sys
 import requests
 import json
@@ -7,6 +8,7 @@ import pymysql.cursors
 from datetime import datetime
 import argparse
 from common import *
+import constants as CONST
 
 MDWIKI_CACHER_DATA = '/srv/mdwiki-cacher/data/'
 DBPARAMS_FILE = MDWIKI_CACHER_DATA + 'dbparams.json'
@@ -168,7 +170,7 @@ def get_mdwiki_list(apfilterredir='nonredirects'):
         loop_count = MAX_LOOPS
         while(loop_count):
             try:
-                r = requests.get(q + apcontinue).json()
+                r = requests.get(q + apcontinue, headers=CONST.cacher_headers).json()
             except Exception as error:
                 logging.error(error)
                 logging.error('Request mdwiki list failed. Exiting.')
