@@ -37,8 +37,8 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 ## Executables
 
 ### Latest Version
-- These are in git repo /opt/mdwiki-cacher
-- These are branch 0.5
+- These are in git repo https://github.com/wpmed/mdwiki-cacher
+- Branch main
 
 ### mdwiki-cacher.wsgi
 - Lives at https://mdwiki.wmcloud.org/
@@ -55,21 +55,21 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - Causes reread of data by invoking https://mdwiki.wmcloud.org/nonwiki/commands/read-data
 - OR can manually restart uwsgi after this runs so mdwiki-cacher.wsgi reloads the lists
 - Typically takes less than 2 minutes
-- Checks for several conditions to run, such as existence of medicine.tsv for current month
+- Checks for several conditions to run
+- Uses most recent medicine.tsv in case was not created in current month
 
 ### load-mdwiki-cache.py
 - Refreshes the mdwiki cache with pages that have changed since some date
 - Reads last refresh date from history file
 - Can also be run interactively to rebuild the entire mdwiki cache calling rebuild_cache()
 
-### common.py
-- library used by other executables
+### Common Files
+- common.py: library used by other executables
+- constants.py: as the name suggests
 
-## Cache Databases
-- mdwiki_api_db  = 'mdwiki_api'
-- mdwiki_wiki_db  = 'mdwiki_wiki'
-- mdwiki_other_db  = 'mdwiki_other'
-- enwp_db ='enwp'
+## Cache Files
+- Cache now stored in files not sqlite db
+- see constants.py for details
 
 ## Permissions
 - common - root and 644
