@@ -1,13 +1,13 @@
  mwoffliner \
   --adminEmail="info@iiab.me" \
-  --articleList="http://offline.mdwiki.org/nonwiki/lists/mdwikimed.tsv" \
+  --articleList="https://mdwiki.wmcloud.org/nonwiki/lists/mdwikimed.tsv" \
   --customMainPage="App/IntroPage" \
   --customZimTitle="MDWiki Medical Encyclopedia" \
   --customZimDescription="MDWiki is a collection of healthcare content curated by WikiProjectMed." \
   --customZimFavicon="https://en.wikipedia.org/static/images/project-logos/enwiki.png" \
   --filenamePrefix="mdwiki_en_all" \
   --format="novid:maxi" --format="" \
-  --mwUrl="http://offline.mdwiki.org/" \
+  --mwUrl="https://mdwiki.wmcloud.org/" \
   --osTmpDir="/dev/shm" \
   --outputDirectory="/output" \
   --zstd \

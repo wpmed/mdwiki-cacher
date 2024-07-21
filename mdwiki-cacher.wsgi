@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import time
+from datetime import timedelta
 import requests
 import json
 import base64
@@ -8,30 +9,46 @@ import base64
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
 from common import * # functions common to several modules
+import constants as CONST
 
 mdwiki_list = []
+mdwiki_redirects = {}
 mdwiki_redirect_list = []
 mdwiki_rd_lookup = {}
-
-mdwiki_domain = 'https://mdwiki.org'
 enwp_list = []
-enwp_domain = 'https://en.wikipedia.org'
 
-mdwiki_api_db  = 'mdwiki_api'
-mdwiki_wiki_db  = 'mdwiki_wiki'
-mdwiki_other_db  = 'mdwiki_other'
+# replaced with constants
+# mdwiki_domain = 'https://mdwiki.org'
+# enwp_domain = 'https://en.wikipedia.org'
+# mdwiki_api_db  = 'mdwiki_api'
+# mdwiki_wiki_db  = 'mdwiki_wiki'
+# mdwiki_other_db  = 'mdwiki_other'
+# enwp_db ='enwp'
 
-enwp_db ='enwp'
+expiry_days = timedelta(days=7)
 
+mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
+mdwiki_wiki_session = CachedSession(CONST.mdwiki_wiki_cache, backend='filesystem', expire_after=expiry_days)
+mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem', expire_after=expiry_days)
+enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
+enwp_other_session = CachedSession(CONST.enwp_other_cache, backend='filesystem', expire_after=expiry_days)
+
+mdwiki_intro_page = '/wiki/App%2FIntroPage'
 nonwiki_url = '/nonwiki/'
 article_list = 'data/mdwikimed.tsv'
+uwsgi_log = '/var/log/uwsgi/app/mdwiki-cacher.log'
+extract_api = '/w/api.php?action=query&format=json&titles='
+
+VERSION = CONST.VERSION
+VERBOSE = False
+skipped_page_count = 0
 
 # /robots.txt handled by nginx
 
 # these are probing queris at the start of a run
 mdwiki_urls = ['/',
                 '/wiki/',
-                '/wiki/App%2FIntroPage',
+                mdwiki_intro_page,
                 '/api/rest_v1/page/mobile-sections/Main_Page',
                 '/api/rest_v1/page/html/Main_Page',
                 '/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page=Main_Page',
@@ -54,6 +71,8 @@ def application(environ, start_response):
     print(req_uri)
     if req_method == 'GET':
         log_request(req_uri, environ)
+        if req_uri == mdwiki_intro_page: # reset count on start of run
+            skipped_page_count = 0
         if req_uri in mdwiki_urls: # some hardcoded urls that must go to mdwiki
             status, response_headers, response_body = get_mdwiki_other_url(req_uri)
 
@@ -62,6 +81,8 @@ def application(environ, start_response):
 
         else:
             status, response_headers, response_body = do_GET(req_uri)
+            if VERBOSE:
+                print('Status: ' + status, response_headers, response_body)
         start_response(status, response_headers)
         # convert string response back to bytes
         # return [response_body.encode()]
@@ -103,11 +124,10 @@ def do_GET(path):
             if page in mdwiki_list:
                 return get_mdwiki_api_url(path)
             elif page in enwp_list:
-                return get_enwp_url(path)
+                return get_enwp_api_url(path, page)
                 # return get_enwp_url_direct(path) # changed 3/5/2022
             else:
-                print("Skipping Unknown Page: " + str(path))
-                return respond_404()
+                return respond_404('Unknown', path)
         else:
             return get_mdwiki_other_url(path) # use mdwiki for anything else
 
@@ -120,17 +140,16 @@ def do_GET(path):
             if article in mdwiki_list:
                 return get_mdwiki_wiki_url(path)
             elif article in enwp_list:
-                return get_enwp_url(path)
-                return get_enwp_url_direct(path) # changed 3/5/2022
+                return get_enwp_other_url(path)
+                # return get_enwp_url_direct(path) # changed 3/5/2022
             else:
-                return respond_404()
+                return respond_404('Unknown', path)
     elif path.startswith('/w/'):
         return get_mdwiki_other_url(path)
     elif path.startswith('/media/'):
         return get_mdwiki_other_url(path)
     else:
-        print("Skipping Unknown Page: " + str(path))
-        return respond_404()
+        return respond_404('Unknown', path)
 
 def do_POST():
     pass
@@ -142,50 +161,63 @@ def dump(environ):
     return response_body
 
 def get_mdwiki_api_url(path):
+    if VERBOSE:
+        print('In get_mdwiki_api_url', path)
     # ADD RETRY
-    url = mdwiki_domain + path
+    url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
-    resp = mdwiki_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+    # mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
+    resp = mdwiki_api_session.get(url, headers=CONST.cacher_headers)
+    # return 404 if 500 error
+    if resp.status_code == 500:
+        return respond_404('500 Error', path)
+
+    # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('Not 200 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
 
 def get_mdwiki_wiki_url(path):
     # ADD RETRY
-    url = mdwiki_domain + path
+    url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite')
-    resp = mdwiki_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+    # mdwiki_session = CachedSession(mdwiki_wiki_db, backend='sqlite', expire_after=expiry_days)
+    resp = mdwiki_wiki_session.get(url, headers=CONST.cacher_headers)
+    # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('Not 200 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
 
 def get_mdwiki_other_url(path):
+    if VERBOSE:
+        print('In get_mdwiki_other_url', path)
     # ADD RETRY
-    url = mdwiki_domain + path
+    url = CONST.mdwiki_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite')
-    resp = mdwiki_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+    # mdwiki_session = CachedSession(mdwiki_other_db, backend='sqlite', expire_after=expiry_days)
+    resp = mdwiki_other_session.get(url, headers=CONST.cacher_headers)
+    # if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('Not 200 or Error', path)
     # start_response(resp)
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
 
-def get_enwp_url_direct(path):
+def get_enwp_url_direct(path): # not used as causes random failure
     # ADD RETRY
-    url = enwp_domain + path
+    url = CONST.enwp_domain + path
     headers = get_request_headers()
     resp = requests.get(url, headers)
-    #if 'Portal' in resp.text:
-    #print(resp.text)
 
-    # REWRITE  wfile.write(resp.content)
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        return respond_404('Not 200 or Error', path)
     return breakout_resp(resp)
 
 def get_request_headers():
@@ -195,14 +227,37 @@ def get_request_headers():
     headers['Connection'] = 'close'
     return headers
 
-def get_enwp_url(path):
+def get_enwp_api_url(path, page):
+    if VERBOSE:
+        print('In get_enwp_api_url', path)
     # ADD RETRY
-    url = enwp_domain + path
-    enwp_session = CachedSession(enwp_db, backend='sqlite')
+    url = CONST.enwp_domain + path
     #logging.info("Downloading from URL: %s\n", str(url))
-    resp = enwp_session.get(url)
-    if resp.status_code == 503 or resp.content.startswith(b'{"error":'):
-        resp = retry_url(url)
+
+    # Make sure page is still there to handle case where was deleted after caching
+    # Can also be in medicine.tsv but later deleted
+    resp = requests.get(CONST.enwp_domain + extract_api + page)
+    if list(resp.json()['query']['pages'])[0] == '-1': # page not found
+        return respond_404('EN WP Error', path)
+
+    resp = enwp_api_session.get(url)
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('EN WP Error', path)
+
+    # REWRITE  wfile.write(resp.content)
+    return breakout_resp(resp)
+
+def get_enwp_other_url(path):
+    if VERBOSE:
+        print('In get_enwp_other_url', path)
+    # ADD RETRY
+    url = CONST.enwp_domain + path
+    #logging.info("Downloading from URL: %s\n", str(url))
+    resp = enwp_other_session.get(url)
+    if resp.status_code != 200 or resp.content.startswith(b'{"error":'):
+        # resp = retry_url(url) only retry in load cache
+        return respond_404('EN WP Error', path)
 
     # REWRITE  wfile.write(resp.content)
     return breakout_resp(resp)
@@ -217,8 +272,8 @@ def get_redir_path(path): # top level
     titles = args['titles'][0].split('|')
     base_query = path.split('&titles=')[0] + '&titles='
     more_rd_query = '/w/api.php?action=query&format=json&prop=redirects&rdlimit=max&rdnamespace=0&redirects=true&titles='
-    enwp_session = CachedSession(enwp_db, backend='sqlite')
-    mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
+    # enwp_session = CachedSession(enwp_db, backend='sqlite')
+    # mdwiki_session = CachedSession(mdwiki_api_db, backend='sqlite')
     pages_resp = {}
     title_page_ids = {}
     for title in titles:
@@ -226,13 +281,17 @@ def get_redir_path(path): # top level
             #print(f'Getting redirect for {title}')
             # remove redirect from query
             query = base_query.replace('&prop=redirects%7C', '&prop=') + title
-            resp = mdwiki_session.get(mdwiki_domain + query)
+            resp = mdwiki_api_session.get(CONST.mdwiki_domain + query, headers=CONST.cacher_headers)
             #resp = requests.session.get(mdwiki_domain + query)
             batch_resp = json.loads(resp.content)
             mdwiki_pageid = next(iter(batch_resp['query']['pages'])) # there should only be one
             title_page_ids[title] = {}
             title_page_ids[title]['mdwiki_pageid'] = mdwiki_pageid
+
+            ########### following line fails in mwoffliner-dev, but not in latest ############
+
             page_resp = batch_resp['query']['pages'][mdwiki_pageid]
+
             #pages_resp[title] = {}
             #pages_resp[title][mdwiki_pageid] = page_resp
             pages_resp[mdwiki_pageid] = page_resp
@@ -250,7 +309,7 @@ def get_redir_path(path): # top level
             # excluded in mk-combined
             if title in enwp_list:
                 # now get list from enwp
-                enwp_resp = enwp_session.get(enwp_domain + more_rd_query + title)
+                enwp_resp = enwp_api_session.get(CONST.enwp_domain + more_rd_query + title)
                 wp_batch_resp = json.loads(enwp_resp.content)
                 enwp_pageid = next(iter(wp_batch_resp['query']['pages'])) # there should only be one
                 enwp_rd = wp_batch_resp['query']['pages'][enwp_pageid].get('redirects', []) # make it have an empty list instead of no list
@@ -266,7 +325,7 @@ def get_redir_path(path): # top level
                 #pages_resp[title][mdwiki_pageid]['redirects'] = redirects
                 pages_resp[mdwiki_pageid]['redirects'] = redirects
         else: # do one enwp title that is not in mdwiki
-            resp = enwp_session.get(enwp_domain + base_query + title)
+            resp = enwp_api_session.get(CONST.enwp_domain + base_query + title)
             #enwp_resp = requests.session.get(enwp_domain + base_query + title)
             batch_resp = json.loads(resp.content)
             enwp_pageid = next(iter(batch_resp['query']['pages'])) # there should only be one
@@ -289,19 +348,22 @@ def get_redir_path(path): # top level
     #print('***pages_resp')
     #print(pages_resp)
     batch_resp['query']['pages'] = pages_resp
+
+    return respond_json(batch_resp)
     #print('***batch_resp')
     #print(batch_resp)
 
-    outp = json.dumps(batch_resp)
+    #outp = json.dumps(batch_resp)
+
     # start_response(resp)
     # REWRITE  wfile.write(bytes(outp, "utf-8"))
 
-    status_code = '200'
-    headers = [('Content-type', 'application/json; charset=utf-8')]
+    #status_code = '200'
+    #headers = [('Content-type', 'application/json; charset=utf-8')]
 
-    return status_code, headers, outp.encode()
+    #return status_code, headers, outp.encode()
 
-def retry_url( url):
+def retry_url( url): # no longer used
     print("Error or 503 in URL: " + str(url))
     sleep_secs = 20
     for i in range(10):
@@ -312,7 +374,14 @@ def retry_url( url):
         time.sleep(i * sleep_secs)
     return None
 
-def respond_404():
+def respond_json(data_dict):
+    outp = json.dumps(data_dict)
+    status_code = '200'
+    headers = [('Content-type', 'application/json; charset=utf-8')]
+    return status_code, headers, outp.encode()
+
+def respond_404(reason, path):
+    print("Skipping " + reason + " Page: " + str(path))
     # REWRITE  send_response(404)
     # REWRITE  send_header('Content-type', 'text/html')
     # REWRITE  end_headers()
@@ -321,7 +390,6 @@ def respond_404():
     status_code = '404'
     body = b'Unknown Page'
     return status_code, headers, body
-
 
 def start_response( resp):
     # REWRITE  send_response(resp.status_code)
@@ -350,22 +418,63 @@ def get_mdwiki_redirects(rd_to_title):
 
 def do_nonwiki(path, environ):
     # all special non-wiki requests come here
+    global VERBOSE
     status = '200 OK'
     response_headers = [('Content-type', 'text/plain')]
     if path == nonwiki_url + 'status':
-        # return env as test
-        refresh_hist = 'Refresh History:\n'
-        refresh_hist += read_file('cache-refresh-hist.txt')
-        env = 'Environment:\n' + dump(environ)
-        response_body = refresh_hist + env
-        response_body = response_body.encode()
+        response_body = get_cacher_stat(environ)
     elif path == nonwiki_url + 'lists/mdwikimed.tsv':
         with open(article_list, 'rb') as f:
             response_body = f.read()
+    elif path == nonwiki_url + 'commands/read-data':
+        try:
+            init()
+            response_body = b'OK'
+        except:
+            response_body = b'Init Failed'
+    elif path == nonwiki_url + 'commands/get-redirects':
+        return respond_json(mdwiki_redirects)
+    elif path == nonwiki_url + 'commands/set-verbose-on':
+        VERBOSE = True
+        response_body = b'Verbose turned ON'
+    elif path == nonwiki_url + 'commands/set-verbose-off':
+        VERBOSE = False
+        response_body = b'Verbose turned OFF'
     else:
         response_body = b'???'
     return status, response_headers, response_body
 
+def get_cacher_stat(environ):
+    response_body = 'MdWiki Cacher Version: ' + VERSION + '\n'
+    response_body += 'MDWiki Cache Refresh History:\n'
+    response_body += read_file_tail('mdwiki_cache-refresh-hist.txt')
+    response_body += 'ENWP Cache Refresh History:\n'
+    response_body += read_file_tail('enwp_cache-refresh-hist.txt')
+
+    response_body += '\nArticle Lists Refresh History:\n'
+    hist = read_file_list('data/mdwiki-list.log')
+    hist.reverse()
+    for i in hist:
+        response_body += i + '\n'
+        if 'List Creation Succeeded' in i:
+            break
+
+    response_body += '\nZim Farm (mdwiki) - '
+    stat =  get_zimfarm_stat('mdwiki')
+    response_body += stat['most_recent_task']['updated_at'] + ': ' + stat['most_recent_task']['status'] +'\n'
+    response_body += 'Zim Farm (mdwiki_app) - '
+    stat =  get_zimfarm_stat('mdwiki_app')
+    response_body += stat['most_recent_task']['updated_at'] + ': ' + stat['most_recent_task']['status'] +'\n'
+
+    response_body += '\nRecently Failed Requests:\n'
+    response_body += '(Ignore if have been fixed.)\n'
+    response_body += read_file('failed_mdwiki_urls.txt')
+
+
+    # don't really need env
+    #env = '\nEnvironment:\n' + dump(environ)
+    #response_body += env
+    return response_body.encode()
 
 def get_enwp_page_list():
     global enwp_list
@@ -399,6 +508,7 @@ def get_mdwiki_redirect_lists():
     #   rd_to_title_hex
     #   rd_from_name_hex
 
+    global mdwiki_redirects
     global mdwiki_redirect_list
     global mdwiki_rd_lookup
 

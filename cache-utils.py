@@ -1,43 +1,52 @@
-#!/usr/bin/env python3
-# su - www-data -s /bin/bash -c '/srv2/mdwiki-cacher/load-cache.py' for testing
+#!/usr/bin/python3
+# su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/load-cache.py' for testing
+# This started out as load-cache.py and is retained for the extra functions for testing and bulk loading
+# load-mdwiki-cache.py should be used for loading the cache
+# these are other utilities with some duplication
 import os
+MDWIKI_CACHER_DIR = '/srv/mdwiki-cacher/'
+os.chdir(MDWIKI_CACHER_DIR)
 import logging
 import sys
-import datetime
+from datetime import timedelta, date
 import time
 import requests
 import json
 import argparse
-import pymysql.cursors
 from urllib.parse import urljoin, urldefrag, urlparse, parse_qs
 from requests_cache import CachedSession
-from requests_cache.backends.sqlite import SQLiteCache
-from common import *
+from requests_cache import FileCache
+from requests_cache import DO_NOT_CACHE
 
-MDWIKI_CACHER_DIR = '/srv2/mdwiki-cacher/'
-os.chdir(MDWIKI_CACHER_DIR)
+from common import *
+import constants as CONST
 
 # HOME_PAGE = 'App/IntroPage'
 RETRY_SECONDS = 20
 RETRY_LOOP = 10
 mdwiki_list = []
-mdwiki_domain = 'https://mdwiki.org'
-mdwiki_db  = 'mdwiki_api'
-mdwiki_cache  = SQLiteCache(db_path=mdwiki_db)
-mdwiki_session  = CachedSession(mdwiki_db, backend='sqlite')
-mdwiki_uncached_session  = CachedSession(mdwiki_db, backend='sqlite', expire_after=0)
+
+mdwiki_api_db  = 'mdwiki_api'
+mdwiki_api_session = CachedSession(CONST.mdwiki_api_cache, backend='filesystem')
+mdwiki_wiki_session = CachedSession(CONST.mdwiki_wiki_cache, backend='filesystem')
+mdwiki_other_session = CachedSession(CONST.mdwiki_other_cache, backend='filesystem')
+enwp_api_session = CachedSession(CONST.enwp_api_cache, backend='filesystem')
+
+
+parse_page = CONST.mdwiki_domain + CONST.parse_page
+videdit_page = CONST.mdwiki_domain + CONST.videdit_page
+
 mdwiki_changed_list = []
 mdwiki_changed_rd = []
 enwp_list = []
-enwp_domain = 'https://en.wikipedia.org'
-enwp_db ='http_cache'
+
 request_paths =  []
 mdwiki_cached_urls = []
 mdwiki_uncached_urls = []
-mdwiki_uncached_pages = []
+mdwiki_uncached_pages = set()
 
-parse_page = 'https://mdwiki.org/w/api.php?action=parse&format=json&prop=modules%7Cjsconfigvars%7Cheadhtml&page='
-videdit_page = 'https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page='
+enwp_uncached_pages = set()
+un_zimmed_pages = set()
 
 # session = CachedSession(cache_control=True)
 # https://requests-cache.readthedocs.io/en/stable/user_guide/headers.html
@@ -56,111 +65,14 @@ def main():
     if args.interactive: # allow override of path
         sys.exit()
 
-    last_day_of_prev_month = datetime.date.today().replace(day=1) - datetime.timedelta(days=1)
-    start_day_of_prev_month = datetime.date.today().replace(day=1) - datetime.timedelta(days=last_day_of_prev_month.day)
-    refresh_cache_since = start_day_of_prev_month.strftime('%Y-%m-%dT%H:%M:%SZ')
-
-    # refresh_cache_since = '2021-12-11T00:00:00Z'
-    # refresh_cache_since = '2022-01-09T00:00:00Z'
-    # refresh_cache_since = '2022-02-17T00:00:00Z'
-    refresh_cache_since = '2022-03-03T00:00:00Z'
-
-    logging.info('Refreshing cached pages with changes since: %s\n', str(refresh_cache_since))
-
-    refresh_cache(refresh_cache_since)
-    logging.info('Cache refreshed\n')
-
-    with open('cache-refresh-hist.txt', 'a') as f:
-        f.write(datetime.date.today().strftime('%Y-%m-%dT%H:%M:%SZ') + '\n')
-
-    write_list(failed_url_list, 'failed_urls.txt')
-
-def refresh_cache(since):
-    get_mdwiki_changed_page_list(since)
-    for page in mdwiki_changed_list:
-        refresh_cache_page(page)
-
-def rebuild_cache():
-    # see load_cache()
-    set_logger()
+    # refresh_cache_since = get_last_run()
     get_mdwiki_page_list()
-    logging.info('Starting to create cache')
-    for page in mdwiki_list:
-        refresh_cache_page(page)
+    # in ? earlier version of CachedSession this is mdwiki_session.cache.urls, not a function
+    # mdwiki_cached_urls = mdwiki_session.cache.urls() # pretty slow
+    get_enwp_page_list()
 
-    # refresh_cache_page
 
-    # verify space or underscore
-    # get_mdwiki_changed_page_list converts
-    # find_in_cache('Heart_failure')
-    # https://mdwiki.org/w/api.php?action=visualeditor&mobileformat=html&format=json&paction=parse&page=Heart_failure
-    # https://mdwiki.org/w/api.php?action=query&format=json&prop=revisions&rdlimit=max&rdnamespace=0%7C3000&redirects=true&titles=Heart_failure
-    # N.B find_in_cache('Heart failure') returns nothing
-    # so in cache all spaces converted to underscore
-    # same in mdwikimed.tsv, so already done at source
-
-    # logging.info('Refreshing cache for page: %s\n', str(page))
-
-def refresh_cache_page(page):
-    url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
-    refresh_cache_url(url)
-    url2 = videdit_page + page
-    refresh_cache_url(url2)
-
-def refresh_cache_url(url):
-    global failed_url_list
-    r = mdwiki_uncached_session.get(url)
-    if r.status_code == 503 or r.content.startswith(b'{"error":'):
-        r = retry_url(url)
-    if r:
-        mdwiki_cache.save_response(r)
-    else:
-        logging.info('Failed to get URL: %s\n', str(url))
-        failed_url_list.append(url)
-
-def retry_url(url):
-    logging.info("Error or 503 in URL: %s\n", str(url))
-    sleep_secs = 20
-    for i in range(10):
-        resp = requests.get(url)
-        if resp.status_code != 503 and not resp.content.startswith(b'{"error":'):
-            return resp
-        logging.info('Retrying URL: %s\n', str(url))
-        time.sleep(i * sleep_secs)
-    return None
-
-def get_mdwiki_changed_page_list(since):
-    global mdwiki_changed_list
-    global mdwiki_changed_rd
-    mdwiki_changed_list = []
-    mdwiki_changed_rd = []
-    #since = '2021-11-01T00:00:00Z'
-    # q = 'https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges&rclimit=max&rcnamespace=0|4&rctoponly'
-    q = 'https://www.mdwiki.org/w/api.php?action=query&format=json&list=recentchanges&rclimit=max&rctoponly&rcprop=redirect|title'
-    q += '&rcnamespace=0&rcstart=now&rcend=' + since
-    rccontinue_param = ''
-    loop_count = -1
-    while(loop_count):
-        try:
-            r = requests.get(q + rccontinue_param).json()
-        except Exception as error:
-            logging.error(error)
-            logging.error('Request failed. Exiting.')
-            sys.exit(1)
-        pages = r['query']['recentchanges']
-        rccontinue = r.get('continue',{}).get('rccontinue')
-        print(rccontinue)
-        for page in pages:
-            if page in mdwiki_changed_list:
-                print(page + ' encountered more than once')
-            if page.get('redirect') == '':
-                mdwiki_changed_rd.append(page['title'].replace(' ', '_'))
-            else:
-                mdwiki_changed_list.append(page['title'].replace(' ', '_'))
-        if not rccontinue:
-            break
-        rccontinue_param = '&rccontinue=' + rccontinue
-        loop_count -= 1
+    logging.info('Cache utilities ready\n')
 
 def set_logger():
     logger = logging.getLogger()
@@ -172,7 +84,7 @@ def set_logger():
     stdout_handler.setLevel(logging.INFO)
     stdout_handler.setFormatter(formatter)
 
-    file_handler = logging.FileHandler('mdwiki-refresh-cache.log')
+    file_handler = logging.FileHandler('cache-utilities.log')
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 
@@ -215,7 +127,7 @@ def add_to_cache():
     for url in mdwiki_uncached_urls:
         print('Getting ' + url)
         for i in range(10):
-            resp = mdwiki_session.get(url)
+            resp = mdwiki_api_session.get(url)
             if resp.status_code == 503:
                 status503_list.append(url)
                 print('# %i Retrying URL: %s\n', i, str(url))
@@ -224,8 +136,8 @@ def add_to_cache():
                 if resp.status_code != 200:
                     print(url)
                 break
-
-def copy_cache(): # was run from mdwiki-cache/cache-tests
+# ToDo convert to filesystem
+def NONE_copy_cache(): # was run from mdwiki-cache/cache-tests
     src_db ='../http_cache.sqlite'
     src_db ='has_errors.sqlite'
     dest_db  = 'mdwiki'
@@ -257,6 +169,38 @@ def copy_cache(): # was run from mdwiki-cache/cache-tests
                         print('# %i Retrying URL: %s\n', i, str(url))
                         time.sleep(i * sleep_secs)
 
+def check_enwp_cache():
+    global enwp_uncached_pages
+    enwp_uncached_pages.clear()
+    enwp_parse_page = enwp_domain + parse_page
+    enwp_videdit_page = enwp_domain + videdit_page
+
+    for page in enwp_list:
+        url = enwp_parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
+        if not enwp_session.cache.contains(url=url):
+            enwp_uncached_pages.add(page)
+            print('Parse URL not cached: ', url)
+        url2 = enwp_videdit_page + page
+        if not enwp_session.cache.contains(url=url2):
+            enwp_uncached_pages.add(page)
+            print('Videdit URL not cached: ', url2)
+
+def check_cache_v1():
+    global mdwiki_uncached_pages
+    mdwiki_uncached_pages.clear()
+    for page in mdwiki_list:
+        url = parse_page + page.replace('_', '%20').replace('/', '%2F').replace(':', '%3A').replace("'", '%27').replace("+", '%2B')
+        if not check_url_in_cache(url):
+            mdwiki_uncached_pages.add(page)
+            print('Parse URL not cached: ', url)
+        url2 = videdit_page + page
+        if not check_url_in_cache(url2):
+            mdwiki_uncached_pages.add(page)
+            print('Videdit URL not cached: ', url2)
+
+def check_url_in_cache(url):
+    return url in mdwiki_cached_urls
+
 def find_to_encode():
     for u in mdwiki_cached_urls:
         if '?action=parse' in u and '&page=' in u:
@@ -268,6 +212,20 @@ def find_in_cache(match):
     for u in mdwiki_cached_urls:
         if match in u:
             print(u)
+
+def check_zim_complete():
+    global un_zimmed_pages
+    un_zimmed_pages.clear()
+    server_url = 'https://iiab.me/kiwix/mdwiki_en_all_2023-11/A/'
+    #server_url = 'http://iiab-content/kiwix/mdwiki_en_all_2023-11/A/'
+    for page in mdwiki_list:
+        url = server_url + page
+        r = requests.head(url)
+        if r.status_code != 200:
+            print(page)
+            un_zimmed_pages.add(page)
+
+
 
 def write_list(data, file):
     with open(file, 'w') as f:
@@ -291,6 +249,14 @@ def get_mdwiki_page_list():
         txt = f.read()
     # last item can be ''
     mdwiki_list = txt.split('\n')[:-1]
+
+def get_enwp_page_list():
+    global enwp_list
+    print('Getting enwp pages')
+    with open('data/enwp.tsv') as f:
+        txt = f.read()
+    # last item can be ''
+    enwp_list = txt.split('\n')[:-1]
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Create or refresh cache for mdwiki-cacher.")
