@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 # su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py' for testing
+# su - www-data -s /bin/bash -c 'python3 -i /srv/mdwiki-cacher/mk-combined-tsv.py -i'
 import sys
 import requests
 import json
@@ -7,6 +8,7 @@ import pymysql.cursors
 from datetime import datetime
 import argparse
 from common import *
+import constants as CONST
 
 MDWIKI_CACHER_DATA = '/srv/mdwiki-cacher/data/'
 DBPARAMS_FILE = MDWIKI_CACHER_DATA + 'dbparams.json'
@@ -22,31 +24,17 @@ import logging.handlers
 MAX_LOOPS = -1 # -1 is all, used for testing
 
 # these pages cause mwoffliner to fail when used with cacher
-EXCLUDE_PAGES = ['1%_Rule_(aviation_medicine)',
-                '1%_rule_(aviation_medicine)',
-                'Nitrous_oxide_50%-oxygen_50%']
+ENWP_EXCLUDE_PAGES = ['1%_Rule_(aviation_medicine)',
+    '1%_rule_(aviation_medicine)',
+    'Nitrous_oxide_50%-oxygen_50%']
+
+MDWIKI_EXCLUDE_PAGES = ['Citation/CS1/styles.css',
+    'Infobox/styles.css',
+    'Navbar/styles.css',
+    'Navbox/styles.css',
+    'Reflist/styles.css']
 
 mdwiki_list = []
-mdwiki_redirects_raw = {}
-mdwiki_redirect_list = []
-mdwiki_rd_lookup = {}
-
-# gets redirct data directly from mdwiki mysql
-
-# get all non-redirect pages from mdwiki
-#   get_mdwiki_page_list() (ns 0, 4)
-# get medicine.tsv from open zim
-# get mdwiki redirects
-# calc and store as json:
-# mdwiki_redirect_list = []
-# mdwiki_rd_lookup = {}
-# calc enwp_list
-#   remove articles that are mdwiki redirects from
-#   add any page in mdwiki_rd_lookup not in mdwiki_list
-# combine lists into mdwikimed.tsv
-# all mdwiki
-# add any enwp not in mdwiki_redirect_list
-# add any page in mdwiki_rd_lookup not already there
 
 def main():
     set_logger(LOG_FILE)
@@ -74,10 +62,7 @@ def mk_combined():
     if not mdwiki_list:
         logging.info('Getting list of pages from mdwiki Failed.')
         return False
-    logging.info('Processing downloaded list of redirects from mdwiki.')
-    if not get_mdwiki_redirect_lists(): # read from mdwiki db and process
-        logging.info('Getting list of redirects from mdwiki')
-        return False
+
     logging.info('Getting list of pages from EN WP.')
     enwp_list = get_enwp_list() # list from kiwix medicine
     if not enwp_list:
@@ -87,17 +72,6 @@ def mk_combined():
 
     write_output(mdwiki_list, MDWIKI_CACHER_DATA + 'mdwiki.tsv')
     write_output(enwp_list, MDWIKI_CACHER_DATA + 'enwp.tsv')
-    #en_wp_only = en_wp_med - mdwiki_list # items only in en wp
-    #en_wip_redir = get_en_wp_redirects(en_wp_only)
-    #combined = mdwiki_list + en_wp_med + en_wip_redir
-    # combined = list(set(en_wp_med + en_wp_med))
-
-    mdwiki_redirects = {}
-    mdwiki_redirects['list'] = mdwiki_redirect_list
-    mdwiki_redirects['lookup'] = mdwiki_rd_lookup
-
-    logging.info('Writing redirects from mdwiki to json file.')
-    write_json_file(mdwiki_redirects, MDWIKI_CACHER_DATA + 'mdwiki_redirects.json')
 
     # put mdwiki at start so any timeouts can be rerun more easily
 
@@ -112,7 +86,10 @@ def mk_combined():
     return True
 
 def force_cache_reload():
-    read_data_url = 'http://offline.mdwiki.org/nonwiki/commands/read-data'
+
+    # ToDo restart uwsgi
+
+    read_data_url = 'https://mdwiki.wmcloud.org/nonwiki/commands/read-data'
     r = requests.get(read_data_url)
     if r.status_code == 200:
         logging.info('Mdwiki cacher loaded data.')
@@ -124,6 +101,8 @@ def can_run(force):
     # force:
     # if didn't find a last run date
     # if already ran
+    # 7/20/2024 medicine.tsv is not being produced so allow old one
+    # In future we may retry later in month
 
     if not force:
         last_run_date = get_last_run() # returns YYYY-MM-DD from end of log
@@ -145,22 +124,23 @@ def can_run(force):
         return False
 
     if not is_medicine_tsv_avail():
-        logging.error('medicine.tsv not yet available for current month. Exiting.')
-        return False
+        logging.info('medicine.tsv not available for current month. Using old copy.')
+    #   return False
 
     return True
 
 def get_mdwiki_list(apfilterredir='nonredirects'):
     md_wiki_pages = []
     for namesp in ['0']:
-        # q = 'https://mdwiki.org/w/api.php?action=query&apnamespace=' + namesp + '&format=json&list=allpages&aplimit=max&apcontinue='
-        q = 'https://mdwiki.org/w/api.php?action=query&apnamespace=' + namesp + '&format=json'
-        q += '&list=allpages&apfilterredir=nonredirects&aplimit=max&apcontinue='
+        q = 'https://mdwiki.org/w/api.php?action=query&apnamespace=' + namesp + '&format=json&list=allpages'
+        q += '&apfilterredir=' + apfilterredir + '&aplimit=max&apcontinue='
+        # q = 'https://mdwiki.org/w/api.php?action=query&apnamespace=' + namesp + '&format=json'
+        # q += '&list=allpages&apfilterredir=nonredirects&aplimit=max&apcontinue='
         apcontinue = ''
         loop_count = MAX_LOOPS
         while(loop_count):
             try:
-                r = requests.get(q + apcontinue).json()
+                r = requests.get(q + apcontinue, headers=CONST.cacher_headers).json()
             except Exception as error:
                 logging.error(error)
                 logging.error('Request mdwiki list failed. Exiting.')
@@ -169,78 +149,13 @@ def get_mdwiki_list(apfilterredir='nonredirects'):
             apcontinue = r.get('continue',{}).get('apcontinue')
             for page in pages:
                 #allpages[page['title']] = page
-                md_wiki_pages.append(page['title'].replace(' ', '_'))
+                if page not in MDWIKI_EXCLUDE_PAGES:
+                    md_wiki_pages.append(page['title'].replace(' ', '_'))
+                    #md_wiki_pages.append(page['title'].replace(' ', '_'))
             if not apcontinue:
                 break
             loop_count -= 1
     return md_wiki_pages
-
-def get_mdwiki_redirect_lists():
-    # redirect.json
-    #   rd_from_id
-    #   rd_to_namespace
-    #   rd_to_title_hex
-    #   rd_from_name_hex
-
-    global mdwiki_redirects_raw
-    global mdwiki_redirect_list
-    global mdwiki_rd_lookup
-
-    mdwiki_redirects_raw = {}
-    mdwiki_redirect_list = []
-    mdwiki_rd_lookup = {}
-    #mdwiki_rd_lookup[HOME_PAGE] = [] # no redirects to home page
-
-    try:
-        mdwiki_redirects_hex = get_mdwiki_redirect_from_db()
-    except Exception as error:
-        logging.error(error)
-        logging.error('Reading redirects from Database Failed.')
-        return False
-
-    for rd in mdwiki_redirects_hex:
-        if rd['rd_to_namespace'] != 0: # skip if not in 0 namespace
-            continue
-        rd_from_title = bytearray.fromhex(rd['rd_from_name_hex']).decode()
-        #print('hex: ' + rd['rd_from_name_hex'])
-        # rd_from_title = decode_b64(rd['rd_from_name_hex'])
-        #print('decoded: ' + rd_from_title)
-
-        #print('hex2: ' + rd['rd_to_title_hex'])
-        #rd_to_title = decode_b64(rd['rd_to_title_hex'])
-        #print('decoded2: ' + rd_to_title)
-        rd_to_title = bytearray.fromhex(rd['rd_to_title_hex']).decode()
-        mdwiki_redirect_list.append(rd_from_title)
-        if rd_to_title not in mdwiki_rd_lookup:
-            mdwiki_rd_lookup[rd_to_title] = []
-        mdwiki_rd_lookup[rd_to_title].append({'pageid': rd['rd_from_id'], 'ns': rd['rd_to_namespace'], 'title': rd_from_title})
-
-    return True
-
-def get_mdwiki_redirect_from_db():
-    try:
-        dbparams = read_json_file(DBPARAMS_FILE)
-        dbconn = pymysql.connect(
-                    host=dbparams['host'],
-                    user=dbparams['user'],
-                    password=dbparams['password'],
-                    ssl=dbparams['ssl'],
-                    database=dbparams['database']
-                    )
-        query = "SELECT JSON_ARRAYAGG(JSON_OBJECT('rd_from_id', r.rd_from, 'rd_from_name_hex', hex(p.page_title),"
-        query += "'rd_to_title_hex', hex(r.rd_title), 'rd_to_namespace', r.rd_namespace))"
-        query += " FROM redirect r INNER JOIN page p ON p.page_id = r.rd_from"
-        cursor = dbconn.cursor()
-        cursor.execute(query)
-        result = cursor.fetchall()
-        cursor.close()
-        dbconn.close()
-        mdwiki_redirects_hex = json.loads(result[0][0]) # result is tuple with json embedded
-        return mdwiki_redirects_hex
-    except Exception as error:
-        logging.error(error)
-        logging.error('Reading redirect.json failed.')
-        raise
 
 def get_enwp_list():
     enwp_pages = []
@@ -248,24 +163,48 @@ def get_enwp_list():
         r = requests.get(WPMED_LIST) # medicine.tsv - gets latest, but not necessarily this month so force can work
         wikimed_pages = r._content.decode().split('\n')
         for p in wikimed_pages[0:-1]:
-            if p in EXCLUDE_PAGES:
-                continue
-
-            # Do Not Exclude because is somewhere in mdwiki titles
-            # enwp_list needs these duplicates
-
-            if p in mdwiki_redirect_list: # exclude because is somewhere in mdwiki redirects
+            if p in ENWP_EXCLUDE_PAGES:
                 continue
             enwp_pages.append(p.replace(' ', '_'))
-        # now add in any enwp pages that are the target of an mdwiki redirect
-        for p in mdwiki_rd_lookup.keys():
-            if p not in enwp_pages:
-                enwp_pages.append(p.replace(' ', '_'))
     except Exception as error:
         logging.error(error)
         logging.error('Request for medicine.tsv failed. Ignoring.')
         enwp_pages = []
     return enwp_pages
+
+def get_last_revision_list(target, page_list):
+    revison_list = {}
+    start_page = 0
+    end_page = 0
+    while(start_page < len(page_list)):
+        end_page = start_page + 50
+        revison_list.update(get_50_last_revision_list(target, page_list[start_page:end_page]))
+        start_page = end_page
+    return revison_list
+
+def get_50_last_revision_list(target, batch_page_list):
+    revison_list = {}
+    if len(batch_page_list) > 50:
+        return None
+    pages = batch_page_list[0]
+    for page in batch_page_list[1:]:
+        pages += '|' + page
+    if target == 'enwp':
+        url = CONST.enwp_domain + CONST.last_revision_query + pages
+    else:
+        url = CONST.mdwiki_domain + CONST.last_revision_query + pages
+    try:
+        r = requests.get(url, headers=CONST.cacher_headers).json()
+    except Exception as error:
+        logging.error(error)
+        logging.error('Request mdwiki list failed. Exiting.')
+        return None
+    for item in r['query']['pages']:
+        if item.get('revisions'):
+            revison_list[item['title'].replace(' ', '_')] = item['revisions'][0]['timestamp']
+        else:
+            print('page not found', item)
+    return revison_list
 
 def get_last_run():
     # look for something like 2022-02-19 15:31:35,007 [INFO] List Creation Succeeded.
@@ -273,7 +212,7 @@ def get_last_run():
     if last_success_date:
         return last_success_date
 
-    log_numbers = range(1, LOG_BACKUP_COUNT)
+    log_numbers = range(1, LOG_BACKUP_COUNT + 1)
     for log_number in log_numbers:
         last_success_date = read_last_run('.' + str(log_number))
         if last_success_date:
