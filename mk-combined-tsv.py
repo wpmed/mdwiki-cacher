@@ -16,7 +16,7 @@ LOG_FILE = MDWIKI_CACHER_DATA + 'mdwiki-list.log'
 LOG_MAX_BYTES = 5000
 LOG_BACKUP_COUNT = 5
 
-WPMED_LIST = 'http://download.openzim.org/wp1/enwiki/customs/medicine.tsv'
+WPMED_LIST = 'https://wp1.download.openzim.org/enwiki/customs/Medicine.tsv'
 
 import logging
 import logging.handlers
@@ -115,13 +115,15 @@ def can_run(force):
             logging.info('Data already calculated for current month. Exiting.')
             return False
 
-    if zimfarm_running('mdwiki'):
-        logging.error('MWOFFLINER mdwiki run in progress. Exiting.')
-        return False
-
-    if zimfarm_running('mdwiki_app'):
-        logging.error('MWOFFLINER mdwiki_app run in progress. Exiting.')
-        return False
+    for recipe in [
+        "mdwiki_app_maxi",
+        "mdwiki_app_mini",
+        "mdwiki_public_full",
+        "mdwiki_public_maxi",
+    ]:
+        if zimfarm_running(recipe):
+            logging.error(f'MWOFFLINER {recipe} run in progress. Exiting.')
+            return False
 
     if not is_medicine_tsv_avail():
         logging.info('medicine.tsv not available for current month. Using old copy.')
