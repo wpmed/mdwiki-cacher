@@ -5,10 +5,10 @@ import json
 from datetime import datetime
 
 def is_medicine_tsv_avail():
-    # e.g. http://download.openzim.org/wp1/enwiki_2022-03/customs/medicine.tsv
-    url = 'http://download.openzim.org/wp1/enwiki_'
+    # e.g. https://wp1.download.openzim.org/enwiki_2022-03/customs/medicine.tsv
+    url = 'https://wp1.download.openzim.org/enwiki_'
     url += datetime.now().strftime('%Y-%m')
-    url += '/customs/medicine.tsv'
+    url += '/customs/Medicine.tsv'
 
     r = requests.head(url)
     if r.status_code == 200:
@@ -25,7 +25,7 @@ def zimfarm_running(recipe):
 
 def get_zimfarm_stat(recipe):
     # status of current run in ['most_recent_task']['status']
-    zimfarm_api = 'https://api.farm.openzim.org/v1/schedules/'
+    zimfarm_api = 'https://api.farm.openzim.org/v2/recipes/'
     r = requests.get(zimfarm_api + recipe)
     return r.json()
 

@@ -21,7 +21,7 @@ OR tailscale up --authkey <key obtained> --shields-up --netfilter-mode off
 
 ### Build initial caches
 - obtain /srv/mdwiki-cacher/data/dbparams.json file to access mdwiki.org database
-- su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py -f'
+- su - www-data -s /bin/bash -c '/srv/mdwiki-cacher/build-medicine-tsv.py -f'
 - su - www-data -s /bin/bash -c '/usr/bin/python3 -i /srv/mdwiki-cacher/load-mdwiki-cache.py -i'
 - this will exit after which run
 - rebuild_cache()
@@ -47,7 +47,7 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - Returns status and an environment dump from /nonwiki/status
 - Handles w/api.php style queries
 
-### mk-combined-tsv.py
+### build-medicine-tsv.py
 - Generates the Article List that drives the zim creation process
 - Available at https://mdwiki.wmcloud.org/nonwiki/lists/mdwikimed.tsv
 - Also generates lists of mdwiki pages, en wp pages, and redirects used by mdwiki-cacher.wsgi
@@ -55,7 +55,7 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 - Causes reread of data by invoking https://mdwiki.wmcloud.org/nonwiki/commands/read-data
 - OR can manually restart uwsgi after this runs so mdwiki-cacher.wsgi reloads the lists
 - Typically takes less than 2 minutes
-- Checks for several conditions to run, such as existence of medicine.tsv for current month
+- Checks for several conditions to run, such as existence of mdwikimed.tsv for current month
 
 ### load-mdwiki-cache.py
 - Refreshes the mdwiki cache with pages that have changed since some date
@@ -74,6 +74,6 @@ https://requests-cache.readthedocs.io/en/stable/user_guide.html
 
 ```
 # for mdwiki-cacher
-30 22 *  *  * www-data  /bin/bash -c '/srv/mdwiki-cacher/mk-combined-tsv.py'
+30 22 *  *  * www-data  /bin/bash -c '/srv/mdwiki-cacher/build-medicine-tsv.py'
 0  1  *  *  7 www-data  /bin/bash -c '/srv/mdwiki-cacher/load-mdwiki-cache.py'
 ```
