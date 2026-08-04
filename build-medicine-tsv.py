@@ -83,10 +83,11 @@ MIRRORED_LIST_CHECKPOINT_FILE = MDWIKI_CACHER_DATA / "mirrored_list_checkpoint.j
 MIRRORED_MEDICINE_DATA_FILE = MDWIKI_CACHER_DATA / "mirrored_medicine.tsv"
 
 # --- Combined output ---------------------------------------------------------
-# Final combined output: FORKED_DATA_FILE + MIRRORED_MEDICINE_DATA_FILE.
-MEDICINE_DATA_FILE = MDWIKI_CACHER_DATA / "medicine.tsv"
-# Scratch file used while building MEDICINE_DATA_FILE, then atomically moved into place.
-MEDICINE_TMP_DATA_FILE = MDWIKI_CACHER_DATA / "medicine.tsv.tmp"
+# Final combined output: FORKED_DATA_FILE + MIRRORED_MEDICINE_DATA_FILE. Read by
+# mdwiki-cacher.wsgi's `article_list`, which expects it at this exact path.
+MDWIKIMED_DATA_FILE = MDWIKI_CACHER_DATA / "mdwikimed.tsv"
+# Scratch file used while building MDWIKIMED_DATA_FILE, then atomically moved into place.
+MDWIKIMED_TMP_DATA_FILE = MDWIKI_CACHER_DATA / "mdwikimed.tsv.tmp"
 
 
 class LoginError(Exception):
@@ -213,14 +214,14 @@ def set_logger(log_file):
     )
 
 def make_medicine_tsv():
-    """Rebuild MEDICINE_DATA_FILE from mdwiki.org and Kiwix Medicine.
+    """Rebuild MDWIKIMED_DATA_FILE from mdwiki.org and Kiwix Medicine.
 
     Refreshes the forked-article list from mdwiki.org (throttled, see refresh_forked_list)
     and the Kiwix Medicine list (only re-downloaded if changed upstream, see
     refresh_kiwix_medicine_list), then (re)builds the mirrored-article list only if Kiwix
     Medicine or mdwiki's mirror actually changed since the last *successful* build (see
     rebuild_mirrored_medicine_list_if_needed), before merging forked + mirrored articles
-    into MEDICINE_DATA_FILE. Safe to schedule at a tight interval (e.g. every minute):
+    into MDWIKIMED_DATA_FILE. Safe to schedule at a tight interval (e.g. every minute):
     main()'s lock skips overlapping runs, every step here is cheap to repeat except the
     mirrored-list build, and that one is both skipped when not needed and checkpointed
     so an interrupted run resumes instead of restarting from scratch.
@@ -463,18 +464,18 @@ def build_mirrored_medicine_list(wiki_client: WikiClient, build_inputs: dict):
     return saved_count
 
 def merge_forked_and_mirrored():
-    """Concatenate FORKED_DATA_FILE and MIRRORED_MEDICINE_DATA_FILE into MEDICINE_DATA_FILE.
+    """Concatenate FORKED_DATA_FILE and MIRRORED_MEDICINE_DATA_FILE into MDWIKIMED_DATA_FILE.
 
-    Writes to MEDICINE_TMP_DATA_FILE first and moves it into place so readers never see
-    a partially-written MEDICINE_DATA_FILE.
+    Writes to MDWIKIMED_TMP_DATA_FILE first and moves it into place so readers never see
+    a partially-written MDWIKIMED_DATA_FILE.
     """
-    with open(MEDICINE_TMP_DATA_FILE, "w") as fh_target:
+    with open(MDWIKIMED_TMP_DATA_FILE, "w") as fh_target:
         with open(FORKED_DATA_FILE, "r") as fh_source:
             fh_target.writelines(fh_source.readlines())
         with open(MIRRORED_MEDICINE_DATA_FILE, "r") as fh_source:
             fh_target.writelines(fh_source.readlines())
-    shutil.move(MEDICINE_TMP_DATA_FILE, MEDICINE_DATA_FILE)
-    logging.info(f'Data has been merged in {MEDICINE_DATA_FILE}.')
+    shutil.move(MDWIKIMED_TMP_DATA_FILE, MDWIKIMED_DATA_FILE)
+    logging.info(f'Data has been merged in {MDWIKIMED_DATA_FILE}.')
 
 if __name__ == "__main__":
     main()
